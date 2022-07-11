@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Type, Union
 
 from . import utils
@@ -10,7 +11,20 @@ from .ncmcache import NCMCache
 from .qmc import QMCv1, QMCv2
 from .sniff import sniff_audio_file
 
+__VERSION: str = 'unknown'
+
 SupportsCrypter = Union[NCM, NCMCache, QMCv1, QMCv2]
+
+
+def get_version() -> str:
+    global __VERSION
+
+    version_file = Path(__file__).parent / 'VERSION'
+    if __VERSION == 'unknown' and version_file.is_file():
+        with open(version_file) as f:
+            __VERSION = f.read().strip()
+
+    return __VERSION
 
 
 def extensions_crypters() -> dict[str, Type[SupportsCrypter]]:
