@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import UnsupportedOperation
-from os import path, PathLike
+from os import PathLike, path
 from random import choices as random_choices
 from string import ascii_letters, digits as strdigits
 from typing import Any, Callable, IO, Type, Union

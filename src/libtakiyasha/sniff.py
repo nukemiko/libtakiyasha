@@ -92,16 +92,16 @@ class BitPaddedInt(int, _BitPaddedMixin):
 
 def audio_file_headers() -> dict[bytes, str]:
     return {
-        b'^fLaC': 'flac',
-        b'^OggS': 'ogg',
-        b'^TTA': 'tta',
-        b'^MAC ': 'ape',
-        b'^\xff[\xf2\xf3\xfb]': 'mp3',
-        b'^\xff\xf1': 'aac',
-        b'^FRM8': 'dff',
-        b'^RIFF': 'wav',
+        b'^fLaC'                                          : 'flac',
+        b'^OggS'                                          : 'ogg',
+        b'^TTA'                                           : 'tta',
+        b'^MAC '                                          : 'ape',
+        b'^\xff[\xf2\xf3\xfb]'                            : 'mp3',
+        b'^\xff\xf1'                                      : 'aac',
+        b'^FRM8'                                          : 'dff',
+        b'^RIFF'                                          : 'wav',
         b'^0&\xb2u\x8ef\xcf\x11\xa6\xd9\x00\xaa\x00b\xcel': 'wma',
-        b'^.{4}ftyp': 'm4a'
+        b'^.{4}ftyp'                                      : 'm4a'
     }
 
 

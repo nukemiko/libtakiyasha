@@ -40,11 +40,11 @@ class QMCv1(Crypter):
     def file_headers() -> dict[bytes, str]:
         return {
             b'\xa5\x06\xb7\x89': 'QMCv1 FLAC',
-            b'\x8a\x0e\xe5': 'QMCv1 MP3',
-            b'<\xb8': 'QMCv1 MP3',
-            b'<\xb9': 'QMCv1 MP3',
-            b'<\xb1': 'QMCv1 MP3',
-            b'\x8c-\xb1\x99': 'QMCv1 OGG'
+            b'\x8a\x0e\xe5'    : 'QMCv1 MP3',
+            b'<\xb8'           : 'QMCv1 MP3',
+            b'<\xb9'           : 'QMCv1 MP3',
+            b'<\xb1'           : 'QMCv1 MP3',
+            b'\x8c-\xb1\x99'   : 'QMCv1 OGG'
         }
 
     def __init__(self,
@@ -172,7 +172,7 @@ class QMCv2(Crypter):
     def unsupported_file_tailer() -> dict[bytes, str]:
         return {
             b'\x25\x02\x00\x00': 'QMCv2 with new key format',
-            b'STag': 'QMCv2 without key'
+            b'STag'            : 'QMCv2 without key'
         }
 
     def __init__(self,
