@@ -1,0 +1,43 @@
+[project]
+name = "libtakiyasha"
+version = "1.0.0"
+authors = [
+    { name = "nukemiko" },
+]
+description = "Python 音乐解密工具库"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "pyaes"
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10"
+]
+keywords = ["unlock", "music", "audio", "qmc", "ncm", "mflac", "mgg", "netease", "163", "qqmusic"]
+
+[project.urls]
+"Homepage" = "https://github.com/nukemiko/libtakiyasha"
+"Documentation" = "https://github.com/nukemiko/libtakiyasha/wiki"
+"Bug Tracker" = "https://github.com/nukemiko/libtakiyasha/issues"
+"Releases" = "https://github.com/nukemiko/libtakiyasha/releases"
+
+[build-system]
+requires = ["setuptools>=46.4.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.setuptools.dynamic]
+version = { file = "src/libtakiyasha/VERSION" }
+readme = { file = ["README.md"] }
