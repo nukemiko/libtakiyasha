@@ -1,10 +1,10 @@
 [project]
 name = "libtakiyasha"
-version = "1.0.0"
+dynamic = ["version"]
 authors = [
     { name = "nukemiko" },
 ]
-description = "Python 音乐解密工具库"
+description = "Python 音乐加解密工具库"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
