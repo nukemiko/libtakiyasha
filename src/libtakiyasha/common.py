@@ -39,6 +39,14 @@ class KeylessCipher:
     def encrypt(self, plaindata: bytes, start_offset: int = 0) -> bytes:
         return self.decrypt(cipherdata=plaindata, start_offset=start_offset)
 
+    @staticmethod
+    def _check_params(start_offset: int) -> int:
+        if isinstance(start_offset, int):
+            if start_offset >= 0:
+                return start_offset
+            raise ValueError(f"'start_offset' should be 0 or a positive integer, got {start_offset}")
+        raise ValueError(f"'{type(start_offset).__name__}' cannot be interpreted as an integer")
+
 
 class Cipher(KeylessCipher):
     def __init__(self, key: bytes) -> None:
