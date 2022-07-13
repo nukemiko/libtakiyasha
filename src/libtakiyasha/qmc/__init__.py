@@ -181,14 +181,12 @@ class QMCv2(Crypter):
                  ) -> None:
         """读写 QQ 音乐 QMCv2 格式的文件。
 
-        部分 QMCv2 格式文件因为没有可用的密钥，目前无法读写，
-        可从它们末尾四个字节的十六进制值判断：
+        部分 QMCv2 格式文件没有可用的密钥，可从它们末尾四个字节的十六进制值判断：
 
         - ``25 02 00 00``：来自版本 18.57 及以上的 QQ 音乐 PC 客户端，密钥使用了新的加密方案
         - ``53 54 61 67`` （``STag``）：来自版本 11.5.5 及以上的 QQ 音乐 Android 客户端，没有内置密钥
 
-        可以尝试使用后备方案（指定 ``try_fallback=True``）读取这类无可用密钥的文件，
-        但后备方案针对这些文件并不一定总是有效。
+        将会使用后备方案尝试打开这些文件，但并非总是有效。
 
         Args:
             filething (file): 指向源文件的路径或文件对象；留空则视为创建一个空的 QMCv2 文件
@@ -196,9 +194,7 @@ class QMCv2(Crypter):
             key (bytes): 加/解密数据所需的密钥；留空则会随机生成一个；
                 仅在 ``filething`` 为空时有效
             cipher_type (str): 加密类型，仅在 ``filething`` 为空时有效；
-                支持：``dynamic_map``（默认值）、``rc4``；
-            try_fallback (bool): 如果无法找到可用的密钥，是否尝试使用后备方案，
-                默认为 False；仅在从 QMCv2 文件读取时有效
+                支持：``dynamic_map``（默认值）、``rc4``
         Raises:
             ValueError: 为参数 ``cipher_type`` 指定了不支持的值
 
@@ -261,23 +257,21 @@ class QMCv2(Crypter):
         如果找到了可用的密钥，那么给 ``__init__()`` 传递的 ``key``
         和 ``cipher_type`` 参数将会被探测到的密钥和加密算法类型取代。
 
-        如果没有可用的密钥，可加上参数 ``try_fallback=True``使用后备方案再次尝试。
+        部分 QMCv2 格式文件没有可用的密钥，可从它们末尾四个字节的十六进制值判断：
 
-        后备方案针对无可用密钥的文件并不一定总是有效。
+        - ``25 02 00 00``：来自版本 18.57 及以上的 QQ 音乐 PC 客户端，密钥使用了新的加密方案
+        - ``53 54 61 67`` （``STag``）：来自版本 11.5.5 及以上的 QQ 音乐 Android 客户端，没有内置密钥
+
+        将会使用后备方案尝试打开这些文件，但并非总是有效。
 
         Args:
             filething (file): 源 QMCv2 文件的路径或文件对象
-        Keyword Args:
-            try_fallback (bool): 如果无法找到可用的密钥，是否尝试使用后备方案，
-            默认为 False
         Raises:
             FileTypeMismatchError: ``filething`` 不是一个 QMCv2 格式文件
             UnsupportedFileType: ``filething`` 是一个 QMCv2 文件，但其格式不受支持
 
         所有未知的关键字参数都会被忽略。
         """
-        try_fallback: bool = kwargs.get('try_fallback', False)
-
         if utils.is_filepath(filething):
             fileobj: IO[bytes] = open(filething, 'rb')  # type: ignore
             self._name: str | None = fileobj.name
@@ -290,20 +284,15 @@ class QMCv2(Crypter):
         fileobj.seek(-4, 2)
         tail = fileobj.read(4)
         if tail in self.unsupported_file_tailer():
-            if try_fallback:
-                if tail == b'\x25\x02\x00\x00':
-                    audio_len = fileobj.seek(-(4 + int.from_bytes(tail, 'little')), 2)
-                else:
-                    audio_len = fileobj.seek(-4, 2)
-                b64encoded_ciphered_keydata: bytes | None = keyutils.find_mflac_mask(fileobj) or keyutils.find_mgg_mask(fileobj)
-                songid = None
-                unknown = None
-                if not b64encoded_ciphered_keydata:
-                    raise UnsupportedFileType(f'all attempt of decrypt failed: '
-                                              f'{self.unsupported_file_tailer()[tail]}'
-                                              )
+            if tail == b'\x25\x02\x00\x00':
+                audio_len = fileobj.seek(-(4 + int.from_bytes(tail, 'little')), 2)
             else:
-                raise UnsupportedFileType(f'unsupported QMCv2 format: '
+                audio_len = fileobj.seek(-4, 2)
+            b64encoded_ciphered_keydata: bytes | None = keyutils.find_mflac_mask(fileobj) or keyutils.find_mgg_mask(fileobj)
+            songid = None
+            unknown = None
+            if not b64encoded_ciphered_keydata:
+                raise UnsupportedFileType(f'all attempt of decrypt failed, maybe this QMC version is unsupported: '
                                           f'{self.unsupported_file_tailer()[tail]}'
                                           )
         elif tail == b'QTag':
@@ -319,7 +308,7 @@ class QMCv2(Crypter):
             else:
                 raise FileTypeMismatchError('not a QMCv2 file: unknown file tail or key not found')
 
-        if tail in self.unsupported_file_tailer() and try_fallback:
+        if tail in self.unsupported_file_tailer():
             self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = Key256Mask128(b64encoded_ciphered_keydata)
         else:
             key = keyutils.QMCv2_key_decrypt(b64encoded_ciphered_keydata)
