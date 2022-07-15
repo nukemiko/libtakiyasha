@@ -4,8 +4,8 @@ from io import BytesIO
 from typing import IO, Literal
 
 from .ciphers import keyutils
-from .ciphers.legacy import Key256Mask128, OldStaticMap
-from .ciphers.modern import DynamicMap, ModifiedRC4, StaticMap
+from .ciphers.legacy import Key256Mask128
+from .ciphers.modern import DynamicMask, HardenedRC4, StaticMask
 from .. import utils
 from ..common import Crypter
 from ..exceptions import FileTypeMismatchError, InvalidDataError, UnsupportedFileType
@@ -68,10 +68,7 @@ class QMCv1(Crypter):
         use_slower_cipher: bool = kwargs.get('use_slower_cipher', False)
         if filething is None:
             self._raw = BytesIO()
-            if use_slower_cipher:
-                self._cipher: StaticMap | OldStaticMap = OldStaticMap()
-            else:
-                self._cipher: StaticMap | OldStaticMap = StaticMap()
+            self._cipher: StaticMask = StaticMask(older_solution=use_slower_cipher)
             self._name: str | None = None
         else:
             self.load(filething, **kwargs)
@@ -106,10 +103,7 @@ class QMCv1(Crypter):
         if utils.is_filepath(filething):
             fileobj.close()
 
-        if use_slower_cipher:
-            self._cipher: StaticMap | OldStaticMap = OldStaticMap()
-        else:
-            self._cipher: StaticMap | OldStaticMap = StaticMap()
+        self._cipher: StaticMask = StaticMask(older_solution=use_slower_cipher)
 
     def save(self,
              filething: utils.FileThing | None = None,
@@ -128,7 +122,7 @@ class QMCv1(Crypter):
         super().save(filething, **kwargs)
 
     @property
-    def cipher(self) -> StaticMap | OldStaticMap:
+    def cipher(self) -> StaticMask:
         return self._cipher
 
 
@@ -214,13 +208,13 @@ class QMCv2(Crypter):
                     cipher_key = utils.gen_random_string(256).encode()
                 else:
                     cipher_key = key
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = DynamicMap(cipher_key)
+                self._cipher: DynamicMask | HardenedRC4 | Key256Mask128 = DynamicMask(cipher_key)
             elif cipher_type.lower() == 'rc4':
                 if key is None:
                     cipher_key = utils.gen_random_string(512).encode()
                 else:
                     cipher_key = key
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = ModifiedRC4(cipher_key)
+                self._cipher: DynamicMask | HardenedRC4 | Key256Mask128 = HardenedRC4(cipher_key)
             else:
                 raise ValueError(f"'cipher_type' must be str 'dynamic_map' or 'rc4'")
             self._raw = BytesIO()
@@ -309,13 +303,13 @@ class QMCv2(Crypter):
                 raise FileTypeMismatchError('not a QMCv2 file: unknown file tail or key not found')
 
         if tail in self.unsupported_file_tailer():
-            self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = Key256Mask128(b64encoded_ciphered_keydata)
+            self._cipher: DynamicMask | HardenedRC4 | Key256Mask128 = Key256Mask128(b64encoded_ciphered_keydata)
         else:
             key = keyutils.QMCv2_key_decrypt(b64encoded_ciphered_keydata)
             if 0 < len(key) < 300:
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = DynamicMap(key)
+                self._cipher: DynamicMask | HardenedRC4 | Key256Mask128 = DynamicMask(key)
             else:
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = ModifiedRC4(key)
+                self._cipher: DynamicMask | HardenedRC4 | Key256Mask128 = HardenedRC4(key)
 
         fileobj.seek(0, 0)
         self._raw = BytesIO(fileobj.read(audio_len))
@@ -378,7 +372,7 @@ class QMCv2(Crypter):
             fileobj.close()
 
     @property
-    def cipher(self) -> DynamicMap | ModifiedRC4 | Key256Mask128:
+    def cipher(self) -> DynamicMask | HardenedRC4 | Key256Mask128:
         return self._cipher
 
     @property

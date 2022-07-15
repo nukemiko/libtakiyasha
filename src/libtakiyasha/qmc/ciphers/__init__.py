@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .legacy import Key256Mask128, OldStaticMap
-from .modern import DynamicMap, ModifiedRC4, StaticMap
+from .legacy import Key256Mask128
+from .modern import DynamicMask, HardenedRC4, StaticMask
 
-__all__ = ['DynamicMap', 'Key256Mask128', 'ModifiedRC4', 'OldStaticMap', 'StaticMap']
+__all__ = ['DynamicMask', 'Key256Mask128', 'HardenedRC4', 'StaticMask']
