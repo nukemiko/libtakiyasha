@@ -7,26 +7,7 @@ from io import BytesIO, IOBase, UnsupportedOperation
 from random import randint
 from typing import IO, Literal, Protocol
 
-__all__ = ['BaseCipher', 'Cipher', 'TransparentCryptIOWrapper']
-
-
-class BaseCipher:
-    def __init__(self, key: bytes, /) -> None:
-        if not isinstance(key, bytes):
-            raise TypeError("'__init__()' requires a bytes-like object as the key of cipher, "
-                            f"not '{type(key).__name__}'"
-                            )
-        self._key = bytes(key)
-
-    @property
-    @lru_cache
-    def blocksize(self) -> int | None:
-        return None
-
-    @property
-    @lru_cache
-    def key(self) -> bytes:
-        return self._key
+__all__ = ['BaseCipher', 'Cipher', 'Crypter', 'TransparentCryptIOWrapper']
 
 
 class Cipher(Protocol):
@@ -91,6 +72,25 @@ class Crypter(Protocol):
                **kwargs
                ) -> None:
         ...
+
+
+class BaseCipher:
+    def __init__(self, key: bytes, /) -> None:
+        if not isinstance(key, bytes):
+            raise TypeError("'__init__()' requires a bytes-like object as the key of cipher, "
+                            f"not '{type(key).__name__}'"
+                            )
+        self._key = bytes(key)
+
+    @property
+    @lru_cache
+    def blocksize(self) -> int | None:
+        return None
+
+    @property
+    @lru_cache
+    def key(self) -> bytes:
+        return self._key
 
 
 class TransparentCryptIOWrapper(IOBase):
