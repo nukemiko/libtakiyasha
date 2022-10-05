@@ -212,7 +212,6 @@ class TransparentCryptIOWrapper(IOBase):
     def loadfrom(cls,
                  filething: str | bytes | os.PathLike | IO[bytes],
                  /,
-                 key: bytes | None = None,
                  **kwargs
                  ) -> Crypter:
         raise NotImplementedError
