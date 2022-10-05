@@ -45,6 +45,54 @@ class Cipher(Protocol):
         return b''
 
 
+class Crypter(Protocol):
+    @property
+    def cipher(self) -> Cipher:
+        return Cipher()
+
+    def readable(self) -> bool:
+        ...
+
+    def writable(self) -> bool:
+        ...
+
+    def seekable(self) -> bool:
+        ...
+
+    def read(self, size: int = -1, /) -> bytes:
+        ...
+
+    def write(self, data: bytes, /) -> int:
+        ...
+
+    def seek(self, offset: int, whence: int = 0, /) -> int:
+        ...
+
+    @property
+    def closed(self) -> bool:
+        return bool()
+
+    def close(self) -> None:
+        ...
+
+    @classmethod
+    def loadfrom(cls,
+                 filething: str | bytes | os.PathLike | IO[bytes],
+                 /,
+                 key: bytes | None = None,
+                 **kwargs
+                 ) -> Crypter:
+        ...
+
+    @classmethod
+    def saveto(cls,
+               filething: str | bytes | os.PathLike | IO[bytes] | None = None,
+               /,
+               **kwargs
+               ) -> None:
+        ...
+
+
 class TransparentCryptIOWrapper(IOBase):
     def __init__(self,
                  cipher: Cipher,
@@ -166,7 +214,7 @@ class TransparentCryptIOWrapper(IOBase):
                  /,
                  key: bytes | None = None,
                  **kwargs
-                 ) -> Cipher:
+                 ) -> Crypter:
         raise NotImplementedError
 
     @classmethod
