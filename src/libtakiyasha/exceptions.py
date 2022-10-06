@@ -12,3 +12,11 @@ class CipherEncryptError(LibTakiyashaException):
 
 class CipherDecryptError(LibTakiyashaException):
     pass
+
+
+class CrypterCreateError(LibTakiyashaException):
+    pass
+
+
+class CrypterSaveError(LibTakiyashaException):
+    pass
