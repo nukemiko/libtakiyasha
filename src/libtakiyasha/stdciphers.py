@@ -28,7 +28,7 @@ class StreamedAESWithModeECB(BaseCipher):
     def __init__(self, key, /) -> None:
         super().__init__(key)
 
-        self._raw_cipher = AESModeOfOperationECB(key=self.key)
+        self._raw_cipher = AESModeOfOperationECB(key=self.key['main'])
 
     def yield_block(self, data: bytes) -> Generator[bytes, None, None]:
         for blk in iter(partial(BytesIO(data).read, self.blocksize()), b''):
@@ -83,7 +83,7 @@ class TEAWithModeECB(BaseCipher):
         return v0, v1, k0, k1, k2, k3
 
     def encrypt(self, plaindata: bytes, /, *args) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(plaindata, self.key)
+        v0, v1, k0, k1, k2, k3 = self.transvalues(plaindata, self.key['main'])
 
         delta = self._delta
         rounds = self._rounds
@@ -100,7 +100,7 @@ class TEAWithModeECB(BaseCipher):
         return v0.to_bytes(4, 'big') + v1.to_bytes(4, 'big')
 
     def decrypt(self, cipherdata: bytes, /, *args) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(cipherdata, self.key)
+        v0, v1, k0, k1, k2, k3 = self.transvalues(cipherdata, self.key['main'])
 
         delta = self._delta
         rounds = self._rounds
