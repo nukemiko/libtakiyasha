@@ -12,49 +12,53 @@ __all__ = ['BaseCipher', 'Cipher', 'Crypter', 'TransparentCryptIOWrapper']
 
 class Cipher(Protocol):
     def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
-        ...
+        raise NotImplementedError
 
     def decrypt(self, cipherdata: bytes, offset: int, /) -> bytes:
-        ...
+        raise NotImplementedError
+
+    @property
+    def offset_related(self) -> bool:
+        raise NotImplementedError
 
     @property
     def blocksize(self) -> int | None:
-        return None
+        raise NotImplementedError
 
     @property
     def key(self) -> bytes:
-        return b''
+        raise NotImplementedError
 
 
 class Crypter(Protocol):
     @property
     def cipher(self) -> Cipher:
-        return Cipher()
+        raise NotImplementedError
 
     def readable(self) -> bool:
-        ...
+        raise NotImplementedError
 
     def writable(self) -> bool:
-        ...
+        raise NotImplementedError
 
     def seekable(self) -> bool:
-        ...
+        raise NotImplementedError
 
     def read(self, size: int = -1, /) -> bytes:
-        ...
+        raise NotImplementedError
 
     def write(self, data: bytes, /) -> int:
-        ...
+        raise NotImplementedError
 
     def seek(self, offset: int, whence: int = 0, /) -> int:
-        ...
+        raise NotImplementedError
 
     @property
     def closed(self) -> bool:
-        return bool()
+        raise NotImplementedError
 
     def close(self) -> None:
-        ...
+        raise NotImplementedError
 
     @classmethod
     def loadfrom(cls,
@@ -63,7 +67,7 @@ class Crypter(Protocol):
                  /,
                  **kwargs
                  ) -> Crypter:
-        ...
+        raise NotImplementedError
 
     @classmethod
     def saveto(cls,
@@ -72,7 +76,7 @@ class Crypter(Protocol):
                /,
                **kwargs
                ) -> None:
-        ...
+        raise NotImplementedError
 
 
 class BaseCipher:
