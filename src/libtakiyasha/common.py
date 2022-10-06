@@ -26,7 +26,7 @@ class Cipher(Protocol):
         raise NotImplementedError
 
     @property
-    def key(self) -> bytes:
+    def key(self) -> dict[str, bytes]:
         raise NotImplementedError
 
 
@@ -97,8 +97,10 @@ class BaseCipher:
         return cls._blocksize
 
     @cached_property
-    def key(self) -> bytes:
-        return self._key
+    def key(self) -> dict[str, bytes]:
+        return {
+            'main': self._key
+        }
 
     def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
         raise NotImplementedError
