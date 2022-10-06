@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import IO, Iterable, SupportsBytes
 
+__all__ = ['bytestrxor', 'is_filepath', 'verify_fileobj']
+
 
 def bytestrxor(bytestr1: SupportsBytes | Iterable[int],
                bytestr2: SupportsBytes | Iterable[int],

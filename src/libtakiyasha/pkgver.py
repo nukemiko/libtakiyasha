@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+__all__ = ['version', 'progname']
+
 
 def version() -> str:
     with open(Path(__file__).parent / 'VERSION', encoding='utf-8') as version_file:

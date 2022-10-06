@@ -7,6 +7,8 @@ from typing import IO
 
 from .utils import verify_fileobj
 
+__all__ = ['CommonAudioHeadersInRegexPattern']
+
 
 class BitPaddedInt(int):
     def __new__(cls, value, bits: int = 7, bigendian: bool = True):
