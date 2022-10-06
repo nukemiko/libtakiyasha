@@ -105,6 +105,16 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
         self._cipher = cipher
         self._name: str | None = None
 
+    def __repr__(self) -> str:
+        ret = f"<{type(self).__name__} file object at {hex(id(self))}, " \
+              f"cipher {repr(self._cipher)}"
+        if self._name is not None:
+            ret += f", from file '{self._name}'"
+
+        ret += '>'
+
+        return ret
+
     @property
     @lru_cache
     def cipher(self) -> Cipher:
@@ -115,9 +125,13 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
     def name(self) -> str | None:
         return self._name
 
+    @property
+    def raw(self) -> BytesIO:
+        return self._internal_bytesio
+
     def _raise_while_closed(self) -> None:
         if self._internal_bytesio.closed:
-            raise ValueError('I/O operation on closed crypt IO wrapper')
+            raise ValueError('I/O operation on closed file.')
 
     def _test_cipher_supported_functions(self,
                                          operation: Literal['encrypt', 'decrypt']
