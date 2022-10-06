@@ -11,7 +11,7 @@ from .ciphers import RC4WithNCMSpecs, XorWithRepeatedByteChar
 from ..common import Cipher, TransparentCryptIOWrapper
 from ..exceptions import CrypterCreateError
 from ..formatprober import CommonAudioHeadersInRegexPattern
-from ..standardciphers import StreamedAESWithModeECB
+from ..stdciphers import StreamedAESWithModeECB
 from ..utils import is_filepath, verify_fileobj
 from ..warns import CrypterCreateWarning
 
