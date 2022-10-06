@@ -14,10 +14,6 @@ __all__ = ['StreamedAESWithModeECB']
 
 
 class StreamedAESWithModeECB(BaseCipher):
-    @property
-    def blocksize(self) -> int | None:
-        return 16
-
     def __init__(self, key, /) -> None:
         super().__init__(key)
 
@@ -26,6 +22,14 @@ class StreamedAESWithModeECB(BaseCipher):
     def yield_block(self, data: bytes) -> Generator[bytes, None, None]:
         for blk in iter(partial(BytesIO(data).read, self.blocksize), b''):
             yield blk
+
+    @property
+    def blocksize(self) -> int | None:
+        return 16
+
+    @property
+    def offset_related(self) -> bool:
+        return False
 
     def encrypt(self, plaindata: bytes, /, *args) -> bytes:
         return b''.join(

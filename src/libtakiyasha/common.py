@@ -85,6 +85,10 @@ class BaseCipher:
                             )
         self._key = bytes(key)
 
+    @property
+    def offset_related(self) -> bool:
+        raise NotImplementedError
+
     @cached_property
     def blocksize(self) -> int | None:
         return None
