@@ -28,7 +28,7 @@ keywords = ["unlock", "music", "audio", "qmc", "ncm", "mflac", "mgg", "netease",
 "Releases" = "https://github.com/nukemiko/libtakiyasha/releases"
 
 [build-system]
-requires = ["setuptools>=46.4.0"]
+requires = { file = ['requirements.txt'] }
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
