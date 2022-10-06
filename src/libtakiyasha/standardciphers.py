@@ -25,12 +25,12 @@ class StreamedAESWithModeECB(BaseCipher):
         for blk in iter(partial(BytesIO(data).read, self.blocksize), b''):
             yield blk
 
-    def encrypt(self, plaindata: bytes) -> bytes:
+    def encrypt(self, plaindata: bytes, /, *args) -> bytes:
         return b''.join(
             self._raw_cipher.encrypt(b) for b in self.yield_block(append_PKCS7_padding(plaindata))
         )
 
-    def decrypt(self, cipherdata: bytes) -> bytes:
+    def decrypt(self, cipherdata: bytes, /, *args) -> bytes:
         return strip_PKCS7_padding(
             b''.join(self._raw_cipher.decrypt(b) for b in self.yield_block(cipherdata))
         )
