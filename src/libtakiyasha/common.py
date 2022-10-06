@@ -93,7 +93,7 @@ class BaseCipher:
         return self._key
 
 
-class TransparentCryptIOWrapper(IOBase):
+class TransparentCryptIOWrapper(IOBase, IO[bytes]):
     def __init__(self,
                  cipher: Cipher,
                  initial_encrypted_data: bytes = b'',
