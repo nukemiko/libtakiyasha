@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from io import BytesIO, IOBase, UnsupportedOperation
 from random import randint
 from typing import IO, Literal, Protocol
@@ -82,13 +82,11 @@ class BaseCipher:
                             )
         self._key = bytes(key)
 
-    @property
-    @lru_cache
+    @cached_property
     def blocksize(self) -> int | None:
         return None
 
-    @property
-    @lru_cache
+    @cached_property
     def key(self) -> bytes:
         return self._key
 
@@ -105,6 +103,7 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
         self._cipher = cipher
         self._name: str | None = None
 
+    @lru_cache
     def __repr__(self) -> str:
         ret = f"<{type(self).__name__} file object at {hex(id(self))}, " \
               f"cipher {repr(self._cipher)}"
@@ -116,12 +115,10 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
         return ret
 
     @property
-    @lru_cache
     def cipher(self) -> Cipher:
         return self._cipher
 
-    @property
-    @lru_cache
+    @cached_property
     def name(self) -> str | None:
         return self._name
 
