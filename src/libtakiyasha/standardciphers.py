@@ -10,6 +10,8 @@ from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
 from .common import BaseCipher
 
+__all__ = ['StreamedAESWithModeECB']
+
 
 class StreamedAESWithModeECB(BaseCipher):
     @property
