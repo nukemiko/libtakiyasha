@@ -81,10 +81,6 @@ class BaseCipher:
     _blocksize = None
 
     def __init__(self, key: bytes, /) -> None:
-        if not isinstance(key, bytes):
-            raise TypeError("'__init__()' requires a bytes-like object as the key of cipher, "
-                            f"not '{type(key).__name__}'"
-                            )
         self._key = bytes(key)
 
     @property
