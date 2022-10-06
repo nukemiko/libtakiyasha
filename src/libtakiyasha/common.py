@@ -59,15 +59,16 @@ class Crypter(Protocol):
     @classmethod
     def loadfrom(cls,
                  filething: str | bytes | os.PathLike | IO[bytes],
+                 enctype: str | None = None,
                  /,
-                 key: bytes | None = None,
                  **kwargs
                  ) -> Crypter:
         ...
 
     @classmethod
     def saveto(cls,
-               filething: str | bytes | os.PathLike | IO[bytes] | None = None,
+               filething: str | bytes | os.PathLike | IO[bytes],
+               enctype: str,
                /,
                **kwargs
                ) -> None:
@@ -222,6 +223,7 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
     @classmethod
     def loadfrom(cls,
                  filething: str | bytes | os.PathLike | IO[bytes],
+                 enctype: str | None = None,
                  /,
                  **kwargs
                  ) -> Crypter:
@@ -229,7 +231,8 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
 
     @classmethod
     def saveto(cls,
-               filething: str | bytes | os.PathLike | IO[bytes] | None = None,
+               filething: str | bytes | os.PathLike | IO[bytes],
+               enctype: str,
                /,
                **kwargs
                ) -> None:
