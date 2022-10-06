@@ -259,7 +259,7 @@ class TencentTEAWithModeCBC(BaseCipher):
                 cipherdata: bytes,
                 /,
                 *args,
-                zero_check: bool = True
+                zero_check: bool = False
                 ) -> bytes:
         if len(cipherdata) % self.blocksize() != 0:
             raise ValueError(f"encrypted key size ({len(cipherdata)}) "
