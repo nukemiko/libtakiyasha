@@ -69,8 +69,7 @@ class Crypter(Protocol):
                  ) -> Crypter:
         raise NotImplementedError
 
-    @classmethod
-    def saveto(cls,
+    def saveto(self,
                filething: str | bytes | os.PathLike | IO[bytes],
                enctype: str,
                /,
@@ -239,8 +238,7 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
                  ) -> Crypter:
         raise NotImplementedError
 
-    @classmethod
-    def saveto(cls,
+    def saveto(self,
                filething: str | bytes | os.PathLike | IO[bytes],
                enctype: str,
                /,
