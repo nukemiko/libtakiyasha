@@ -124,8 +124,8 @@ class TencentTEAWithModeCBC(BaseCipher):
     def offset_related(self) -> bool:
         return False
 
-    @property
-    def keysize(self) -> int:
+    @classmethod
+    def keysize(cls) -> int:
         return 16
 
     @property
@@ -148,8 +148,8 @@ class TencentTEAWithModeCBC(BaseCipher):
             rounds: 加/解密的轮转次数，必须为偶数
             magic_number: 加/解密使用的魔数
         """
-        if len(key) != self.keysize:
-            raise ValueError(f"invalid key length {len(key)} (should be {self.keysize})")
+        if len(key) != self.keysize():
+            raise ValueError(f"invalid key length {len(key)} (should be {self.keysize()})")
         if rounds % 2 != 0:
             raise ValueError(f"'rounds' must be an even integer, got {rounds}")
 
