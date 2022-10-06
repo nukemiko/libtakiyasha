@@ -21,8 +21,8 @@ class Cipher(Protocol):
     def offset_related(self) -> bool:
         raise NotImplementedError
 
-    @property
-    def blocksize(self) -> int | None:
+    @classmethod
+    def blocksize(cls) -> int | None:
         raise NotImplementedError
 
     @property
@@ -78,6 +78,8 @@ class Crypter(Protocol):
 
 
 class BaseCipher:
+    _blocksize = None
+
     def __init__(self, key: bytes, /) -> None:
         if not isinstance(key, bytes):
             raise TypeError("'__init__()' requires a bytes-like object as the key of cipher, "
@@ -89,9 +91,10 @@ class BaseCipher:
     def offset_related(self) -> bool:
         raise NotImplementedError
 
-    @cached_property
-    def blocksize(self) -> int | None:
-        return None
+    @classmethod
+    @lru_cache
+    def blocksize(cls) -> int | None:
+        return cls._blocksize
 
     @cached_property
     def key(self) -> bytes:
@@ -155,7 +158,7 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
         else:
             raise ValueError(f"'operation' must be str 'encrypt' or 'decrypt', not {repr(operation)}")
 
-        test_blksize: int | None = self._cipher.blocksize
+        test_blksize: int | None = self._cipher.blocksize()
         if test_blksize is None:
             test_blksize: int = 4096
         test_data = bytes([randint(0, 255) for _ in range(test_blksize)])

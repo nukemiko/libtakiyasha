@@ -23,18 +23,16 @@ rand = partial(random.randint, 0, 255)
 
 
 class StreamedAESWithModeECB(BaseCipher):
+    _blocksize = 16
+
     def __init__(self, key, /) -> None:
         super().__init__(key)
 
         self._raw_cipher = AESModeOfOperationECB(key=self.key)
 
     def yield_block(self, data: bytes) -> Generator[bytes, None, None]:
-        for blk in iter(partial(BytesIO(data).read, self.blocksize), b''):
+        for blk in iter(partial(BytesIO(data).read, self.blocksize()), b''):
             yield blk
-
-    @property
-    def blocksize(self) -> int | None:
-        return 16
 
     @property
     def offset_related(self) -> bool:
@@ -52,14 +50,16 @@ class StreamedAESWithModeECB(BaseCipher):
 
 
 class TEAWithModeECB(BaseCipher):
+    _blocksize = 16
+
     def __init__(self,
                  key: bytes,
                  /,
                  rounds: int = 64,
                  magic_number: int = 0x9e3779b9
                  ) -> None:
-        if len(key) != self.blocksize:
-            raise ValueError(f"invalid key length {len(key)} (should be {self.blocksize})")
+        if len(key) != self.blocksize():
+            raise ValueError(f"invalid key length {len(key)} (should be {self.blocksize()})")
         if rounds % 2 != 0:
             raise ValueError(f'even number of rounds required (got {rounds})')
 
@@ -70,10 +70,6 @@ class TEAWithModeECB(BaseCipher):
     @property
     def offset_related(self) -> bool:
         return False
-
-    @property
-    def blocksize(self) -> int:
-        return 16
 
     @classmethod
     def transvalues(cls, data: bytes, key: bytes) -> tuple[int, int, int, int, int, int]:
@@ -122,13 +118,11 @@ class TEAWithModeECB(BaseCipher):
 
 
 class TencentTEAWithModeCBC(BaseCipher):
+    _blocksize = 8
+
     @property
     def offset_related(self) -> bool:
         return False
-
-    @property
-    def blocksize(self) -> int:
-        return 8
 
     @property
     def keysize(self) -> int:
@@ -165,12 +159,12 @@ class TencentTEAWithModeCBC(BaseCipher):
     def encrypt(self, plaindata: bytes, /, *args) -> bytes:
         # 根据 plaindata 长度计算 pad_len，最小长度必须为 8 的整数倍
         pad_salt_body_zero_len = (len(plaindata) + self.salt_len + self.zero_len + 1)
-        pad_len = pad_salt_body_zero_len % self.blocksize
+        pad_len = pad_salt_body_zero_len % self.blocksize()
         if pad_len != 0:
             # 模 8 余 0 需补 0，余 1 补 7，余 2 补 6，...，余 7 补 1
-            pad_len = self.blocksize - pad_len
+            pad_len = self.blocksize() - pad_len
 
-        src_buf = bytearray(self.blocksize)
+        src_buf = bytearray(self.blocksize())
 
         # 加密第一块数据（8 个字节）
         src_buf[0] = (rand() & 0xf8)  # 最低三位存 pad_len，清零
@@ -185,7 +179,7 @@ class TencentTEAWithModeCBC(BaseCipher):
 
         # 到此处为止，src_idx 必须小于 8
 
-        iv_plain = bytearray(self.blocksize)
+        iv_plain = bytearray(self.blocksize())
         iv_crypt = iv_plain[:]  # 制造一个空初始向量
 
         # 获取加密结果预期长度，并据此创建一个空数组
@@ -199,28 +193,28 @@ class TencentTEAWithModeCBC(BaseCipher):
             src_buf[:] = bytestrxor(src_buf, iv_crypt)
 
             # 使用 TEA ECB 模式加密
-            out_buf[out_buf_pos:out_buf_pos + self.blocksize] = self._cipher_per_block.encrypt(src_buf)
+            out_buf[out_buf_pos:out_buf_pos + self.blocksize()] = self._cipher_per_block.encrypt(src_buf)
 
             # 加密后异或前8个字节的密文（iv_crypt 指向的）
-            out_buf[out_buf_pos:out_buf_pos + self.blocksize] = bytestrxor(
-                out_buf[out_buf_pos:out_buf_pos + self.blocksize], iv_plain
+            out_buf[out_buf_pos:out_buf_pos + self.blocksize()] = bytestrxor(
+                out_buf[out_buf_pos:out_buf_pos + self.blocksize()], iv_plain
             )
 
             # 保存当前的 iv_plain
             iv_plain[:] = src_buf[:]
 
             # 更新 iv_crypt
-            iv_crypt[:] = out_buf[out_buf_pos:out_buf_pos + self.blocksize]
-            out_buf_pos += self.blocksize
+            iv_crypt[:] = out_buf[out_buf_pos:out_buf_pos + self.blocksize()]
+            out_buf_pos += self.blocksize()
 
         # 填充2个字节的 Salt
         i = 1
         while i <= self.salt_len:
-            if src_idx < self.blocksize:
+            if src_idx < self.blocksize():
                 src_buf[src_idx] = rand()
                 src_idx += 1
                 i += 1
-            if src_idx == self.blocksize:
+            if src_idx == self.blocksize():
                 crypt_block()
                 src_idx = 0
 
@@ -228,11 +222,11 @@ class TencentTEAWithModeCBC(BaseCipher):
 
         plaindata_pos = 0
         while plaindata_pos < len(plaindata):
-            if src_idx < self.blocksize:
+            if src_idx < self.blocksize():
                 src_buf[src_idx] = plaindata[plaindata_pos]
                 src_idx += 1
                 plaindata_pos += 1
-            if src_idx == self.blocksize:
+            if src_idx == self.blocksize():
                 crypt_block()
                 src_idx = 0
 
@@ -253,10 +247,10 @@ class TencentTEAWithModeCBC(BaseCipher):
     def get_encrypt_result_len(self, plaindata: bytes) -> int:
         # 根据 plaindata 长度计算 pad_len ，最小长度必须为8的整数倍
         pad_salt_body_zero_len = (len(plaindata) + self.salt_len + self.zero_len + 1)
-        pad_len = pad_salt_body_zero_len % self.blocksize
+        pad_len = pad_salt_body_zero_len % self.blocksize()
         if pad_len != 0:
             # 模8余0需补0，余1补7，余2补6，...，余7补1
-            pad_len = self.blocksize - pad_len
+            pad_len = self.blocksize() - pad_len
 
         # 返回的是加密结果预期的长度
         return pad_salt_body_zero_len + pad_len
@@ -267,13 +261,13 @@ class TencentTEAWithModeCBC(BaseCipher):
                 *args,
                 zero_check: bool = True
                 ) -> bytes:
-        if len(cipherdata) % self.blocksize != 0:
+        if len(cipherdata) % self.blocksize() != 0:
             raise ValueError(f"encrypted key size ({len(cipherdata)}) "
-                             f"is not a multiple of the block size ({self.blocksize})"
+                             f"is not a multiple of the block size ({self.blocksize()})"
                              )
-        if len(cipherdata) < self.blocksize * 2:
+        if len(cipherdata) < self.blocksize() * 2:
             raise ValueError(f"encrypted keydata length is too short "
-                             f"(should be >= {self.blocksize * 2}, got {len(cipherdata)})"
+                             f"(should be >= {self.blocksize() * 2}, got {len(cipherdata)})"
                              )
 
         dest_buf = bytearray(self._cipher_per_block.decrypt(cipherdata))
