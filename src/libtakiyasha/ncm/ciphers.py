@@ -58,8 +58,8 @@ class XorWithRepeatedByteChar(BaseCipher):
     def make_keystream(cls, d_len: int) -> bytes:
         return b'\xa3' * d_len
 
-    def encrypt(self, plaindata: bytes, *args) -> bytes:
+    def encrypt(self, plaindata: bytes, /, *args) -> bytes:
         return self.decrypt(plaindata)
 
-    def decrypt(self, cipherdata: bytes, *args) -> bytes:
+    def decrypt(self, cipherdata: bytes, /, *args) -> bytes:
         return bytestrxor(cipherdata, self.make_keystream(len(bytes(cipherdata))))
