@@ -71,7 +71,6 @@ class Crypter(Protocol):
 
     def saveto(self,
                filething: str | bytes | os.PathLike | IO[bytes],
-               enctype: str,
                /,
                **kwargs
                ) -> None:
@@ -240,7 +239,6 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
 
     def saveto(self,
                filething: str | bytes | os.PathLike | IO[bytes],
-               enctype: str,
                /,
                **kwargs
                ) -> None:
