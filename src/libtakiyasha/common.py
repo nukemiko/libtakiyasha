@@ -95,6 +95,12 @@ class BaseCipher:
     def key(self) -> bytes:
         return self._key
 
+    def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: bytes, offset: int, /) -> bytes:
+        raise NotImplementedError
+
 
 class TransparentCryptIOWrapper(IOBase, IO[bytes]):
     def __init__(self,
