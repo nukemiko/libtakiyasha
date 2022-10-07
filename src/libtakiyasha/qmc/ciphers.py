@@ -54,6 +54,13 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         self._mix_key1 = bytes(mix_key1)
         self._mix_key2 = bytes(mix_key2)
 
+        self._encrypt_stage1_decrypt_stage2_tea_cipher = TencentTEAWithModeCBC(self._mix_key2,
+                                                                               rounds=32
+                                                                               )
+        self._encrypt_stage2_decrypt_stage1_tea_cipher = TencentTEAWithModeCBC(self._mix_key1,
+                                                                               rounds=32
+                                                                               )
+
         super().__init__(simple_key)
 
     @property
@@ -69,17 +76,11 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         qmcv2_key_encv1_key_encrypted_b64encoded = b64encode(qmcv2_key_encv1_key_encrypted)
 
         try:
-            encrypt_stage1 = TencentTEAWithModeCBC(
-                self.key['MixKey2'],
-                rounds=32
-            ).encrypt(qmcv2_key_encv1_key_encrypted_b64encoded)
+            encrypt_stage1 = self._encrypt_stage1_decrypt_stage2_tea_cipher.encrypt(qmcv2_key_encv1_key_encrypted_b64encoded)
         except Exception as exc:
             raise CipherEncryptError('QMCv2 key encrypt v2 stage 1 key encrypt failed') from exc
         try:
-            encrypt_stage2 = TencentTEAWithModeCBC(
-                self.key['MixKey1'],
-                rounds=32
-            ).encrypt(encrypt_stage1)
+            encrypt_stage2 = self._encrypt_stage2_decrypt_stage1_tea_cipher.encrypt(encrypt_stage1)
         except Exception as exc:
             raise CipherEncryptError('QMCv2 key encrypt v2 stage 2 key encrypt failed') from exc
 
@@ -88,17 +89,11 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
     def decrypt(self, cipherdata: bytes, /, *args) -> bytes:
         # cipherdata 应当是 b64decode 之后，去除了开头 18 个字符的结果
         try:
-            decrypt_stage1: bytes = TencentTEAWithModeCBC(
-                self.key['MixKey1'],
-                rounds=32
-            ).decrypt(cipherdata, zero_check=True)
+            decrypt_stage1: bytes = self._encrypt_stage2_decrypt_stage1_tea_cipher.decrypt(cipherdata, zero_check=True)
         except Exception as exc:
             raise CipherDecryptError('QMCv2 key encrypt v2 stage 1 key decrypt failed') from exc
         try:
-            decrypt_stage2: bytes = TencentTEAWithModeCBC(
-                self.key['MixKey2'],
-                rounds=32
-            ).decrypt(decrypt_stage1, zero_check=True)  # 实际上就是 QMCv2 Key Encrypt V1 的密钥
+            decrypt_stage2: bytes = self._encrypt_stage1_decrypt_stage2_tea_cipher.decrypt(decrypt_stage1, zero_check=True)  # 实际上就是 QMCv2 Key Encrypt V1 的密钥
         except Exception as exc:
             raise CipherDecryptError('QMCv2 key encrypt v2 stage 2 key decrypt failed') from exc
 
