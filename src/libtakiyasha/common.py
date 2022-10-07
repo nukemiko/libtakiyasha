@@ -234,6 +234,14 @@ class TransparentCryptIOWrapper(IOBase, IO[bytes]):
         self._internal_bytesio.close()
 
     @classmethod
+    def new(cls,
+            enctype: str,
+            key: bytes,
+            /
+            ) -> Crypter:
+        raise NotImplementedError
+
+    @classmethod
     def loadfrom(cls,
                  filething: str | bytes | os.PathLike | IO[bytes],
                  enctype: str | None = None,

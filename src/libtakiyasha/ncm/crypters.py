@@ -147,6 +147,8 @@ def _extract(fileobj: IO[bytes],
              init_key: bytes | None = None,
              meta_key: bytes | None = None
              ) -> tuple[tuple[NCMCiphers, bytes], dict]:
+    fileobj_oldpos = fileobj.seek(0, 1)
+
     fileobj.seek(0, 0)
 
     if enctype is None:
@@ -158,11 +160,12 @@ def _extract(fileobj: IO[bytes],
         extraction_flow = _extract_ncm
     elif enctype == 'ncmcache':
         extraction_flow = _extract_ncmcache
+    elif isinstance(enctype, str):
+        fileobj.seek(fileobj_oldpos, 0)
+        raise ValueError(f"unsupported encryption type '{enctype}'")
     else:
-        if isinstance(enctype, str):
-            raise ValueError(f"unsupported encryption type '{enctype}'")
-        else:
-            raise TypeError(f"'enctype' must be str, not {type(enctype).__name__}")
+        fileobj.seek(fileobj_oldpos, 0)
+        raise TypeError(f"'enctype' must be str, not {type(enctype).__name__}")
 
     extraction_flow_kwargs = {
         'fileobj': fileobj
@@ -180,7 +183,7 @@ def _extract(fileobj: IO[bytes],
 def _generate_masterkey_encrypted_xored(init_key: bytes,
                                         cipher: Cipher
                                         ) -> tuple[bytes, bytes]:
-    masterkey = cipher.key
+    masterkey = cipher.key['main']
     masterkey_encrypted = StreamedAESWithModeECB(init_key).encrypt(b'neteasecloudmusic' + masterkey)
 
     masterkey_encrypted_xored = bytes(b ^ 0x64 for b in masterkey_encrypted)
@@ -302,6 +305,27 @@ def generate_ncm_tag(initial_dict: dict[str, Any]) -> NCMMusicIdentityTag:
 
 
 class NCM(TransparentCryptIOWrapper):
+    @classmethod
+    def new(cls,
+            enctype: Literal['ncm', 'ncmcache'],
+            key: bytes,
+            /,
+            cover_data: bytes = b'',
+            **kwargs
+            ) -> NCM:
+        if enctype == 'ncm':
+            cipher = RC4WithNCMSpecs(key)
+        elif enctype == 'ncmcache':
+            cipher = XorWithRepeatedByteChar()
+        elif isinstance(enctype, str):
+            raise ValueError(f"unsupported encryption type '{enctype}'")
+        else:
+            raise TypeError(f"'enctype' must be str, not {type(enctype).__name__}")
+
+        initial_encrypted_data = b''
+
+        return cls(cipher, initial_encrypted_data, cover_data=cover_data, **kwargs)
+
     @classmethod
     def loadfrom(cls,
                  filething: str | bytes | os.PathLike | IO[bytes],
