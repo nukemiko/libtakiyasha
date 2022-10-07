@@ -5,7 +5,7 @@ import os
 from functools import cached_property, lru_cache
 from io import BytesIO, IOBase, UnsupportedOperation
 from random import randint
-from typing import IO, Literal, Protocol
+from typing import IO, Iterable, Literal, Protocol, SupportsBytes
 
 __all__ = ['BaseCipher', 'Cipher', 'Crypter', 'TransparentCryptIOWrapper']
 
@@ -80,7 +80,7 @@ class Crypter(Protocol):
 class BaseCipher:
     _blocksize = None
 
-    def __init__(self, key: bytes, /) -> None:
+    def __init__(self, key: SupportsBytes | Iterable[int], /) -> None:
         self._key = bytes(key)
 
     @property
