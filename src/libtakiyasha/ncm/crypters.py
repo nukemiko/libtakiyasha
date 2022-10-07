@@ -76,8 +76,9 @@ def _extract_cover_data(cover_space_data: bytes,
 
 
 def _extract_ncm(fileobj: IO[bytes],
-                 init_key: bytes,
-                 meta_key: bytes | None = None
+                 init_key: bytes | None = None,
+                 meta_key: bytes | None = None,
+                 masterkey: bytes | None = None
                  ) -> tuple[tuple[NCMCiphers, bytes], dict]:
     fileobj.seek(10, 0)
 
@@ -98,9 +99,17 @@ def _extract_ncm(fileobj: IO[bytes],
     cover_space_data = fileobj.read(cover_space_len)
 
     # 使用 init_key 解密主密钥，并创建 RC4WithNCMSpecs
-    if init_key is None:
-        raise CrypterCreateError("argument 'init_key' is not provided, cannot to continue")
-    cipher = _extract_masterkey(init_key, masterkey_encrypted_xored)
+    # 如果已经提供了主密钥 masterkey，那么 init_key 不是必需的，
+    # 并且 masterkey 的优先级高于从文件中得出的主密钥
+    if masterkey is None:
+        if init_key is None:
+            raise CrypterCreateError("argument 'init_key' and 'madterkey' is not provided, "
+                                     "cannot to continue"
+                                     )
+        else:
+            cipher = _extract_masterkey(init_key, masterkey_encrypted_xored)
+    else:
+        cipher = RC4WithNCMSpecs(masterkey)
 
     # 使用 meta_key 解密 163key，获得标签信息
     # 如果 meta_key 为 None，跳过此步骤
@@ -145,7 +154,8 @@ def _extract_ncmcache(fileobj: IO[bytes]) -> tuple[tuple[NCMCiphers, bytes], dic
 def _extract(fileobj: IO[bytes],
              enctype: Literal['ncm', 'ncmcache'] | None = None,
              init_key: bytes | None = None,
-             meta_key: bytes | None = None
+             meta_key: bytes | None = None,
+             masterkey: bytes | None = None
              ) -> tuple[tuple[NCMCiphers, bytes], dict]:
     fileobj_oldpos = fileobj.seek(0, 1)
 
@@ -172,8 +182,9 @@ def _extract(fileobj: IO[bytes],
     }
     if extraction_flow is _extract_ncm:
         extraction_flow_kwargs.update({
-            'init_key': init_key,
-            'meta_key': meta_key
+            'init_key' : init_key,
+            'meta_key' : meta_key,
+            'masterkey': masterkey
         }
         )
 
@@ -331,6 +342,7 @@ class NCM(TransparentCryptIOWrapper):
                  filething: str | bytes | os.PathLike | IO[bytes],
                  enctype: Literal['ncm', 'ncmcache'] | None = None,
                  /,
+                 key: bytes | None = None,
                  **kwargs
                  ) -> NCM:
         validate: bool = kwargs.pop('validate', False)
@@ -339,7 +351,7 @@ class NCM(TransparentCryptIOWrapper):
 
         if is_filepath(filething):
             with open(filething, 'rb') as fileobj:
-                init_posargs, init_kwargs = _extract(fileobj, enctype, init_key, meta_key)
+                init_posargs, init_kwargs = _extract(fileobj, enctype, init_key, meta_key, masterkey=key)
                 cipher, audio_encrypted = init_posargs
                 crypter_filename = fileobj.name
         else:
@@ -348,7 +360,7 @@ class NCM(TransparentCryptIOWrapper):
                                      verify_read=True,
                                      verify_seek=True
                                      )
-            init_posargs, init_kwargs = _extract(fileobj, enctype, init_key, meta_key)
+            init_posargs, init_kwargs = _extract(fileobj, enctype, init_key, meta_key, masterkey=key)
             cipher, audio_encrypted = init_posargs
             crypter_filename = getattr(fileobj, 'name', None)
 
