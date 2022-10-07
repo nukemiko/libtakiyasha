@@ -5,7 +5,7 @@ import json
 import os
 import warnings
 from base64 import b64decode, b64encode
-from typing import Any, IO, Literal, SupportsBytes, TypedDict, Union
+from typing import IO, Literal, SupportsBytes, TypedDict, Union
 
 from .ciphers import RC4WithNCMSpecs, XorWithRepeatedByteChar
 from ..common import Cipher, TransparentCryptIOWrapper
@@ -283,9 +283,9 @@ def _generate(fileobj: IO[bytes],
     generation_flow(**generation_flow_kwargs)
 
 
-def generate_ncm_tag(initial_dict: dict[str, Any]) -> NCMMusicIdentityTag:
+def generate_ncm_tag(**initial_dict_from_kwargs) -> NCMMusicIdentityTag:
     return {
-        key: initial_dict.pop(key, initvar) for key, initvar in [
+        key: initial_dict_from_kwargs.pop(key, initvar) for key, initvar in [
             ('format', ''),
             ('musicId', 0),
             ('musicName', ''),
@@ -404,7 +404,7 @@ class NCM(TransparentCryptIOWrapper):
 
         super().__init__(cipher, initial_encrypted_data)
 
-        self._ncm_tag = generate_ncm_tag(kwargs)
+        self._ncm_tag = generate_ncm_tag(**kwargs)
         self._cover_data = cover_data
 
     @property
