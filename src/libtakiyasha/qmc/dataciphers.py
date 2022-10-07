@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from functools import cached_property, lru_cache
 from typing import Generator, Iterable, SupportsBytes
 
 from .consts import KEY256_MAPPING
@@ -101,3 +102,135 @@ class Mask128(BaseCipher):
                                                            offset
                                                            )
                           )
+
+
+class HardenedRC4(BaseCipher):
+    @property
+    def offset_related(self) -> bool:
+        return True
+
+    @cached_property
+    def hash_base(self) -> int:
+        base = 1
+        key = self.key['main']
+
+        for i in range(len(key)):
+            v: int = key[i]
+            if v == 0:
+                continue
+            next_hash: int = (base * v) & 0xffffffff
+            if next_hash == 0 or next_hash <= base:
+                break
+            base = next_hash
+        return base
+
+    @cached_property
+    def first_segment_size(self) -> int:
+        return 128
+
+    @cached_property
+    def common_segment_size(self) -> int:
+        return 5120
+
+    def __init__(self, key: SupportsBytes | Iterable[int], /):
+        super().__init__(key)
+        key_len = len(self.key['main'])
+
+        self._box = bytearray(i % 256 for i in range(key_len))
+        j = 0
+        for i in range(key_len):
+            j = (j + self._box[i] + self.key['main'][i % key_len]) % key_len
+            self._box[i], self._box[j] = self._box[j], self._box[i]
+
+    @lru_cache(maxsize=65536)
+    def _get_segment_skip(self, value: int) -> int:
+        key = self.key['main']
+        key_len = len(self.key['main'])
+
+        seed = key[value % key_len]
+        idx = int(self.hash_base / ((value + 1) * seed) * 100)
+
+        return idx % key_len
+
+    def _yield_first_segment_keystream(self,
+                                       blksize: int,
+                                       offset: int
+                                       ) -> Generator[int, None, None]:
+        key = self.key['main']
+        for i in range(offset, offset + blksize):
+            yield key[self._get_segment_skip(i)]
+
+    def _yield_common_segment_keystream(self,
+                                        blksize: int,
+                                        offset: int
+                                        ) -> Generator[int, None, None]:
+        key_len = len(self.key['main'])
+        box = self._box.copy()
+        j, k = 0, 0
+
+        skip_len = offset % self.common_segment_size + self._get_segment_skip(
+            offset // self.common_segment_size
+        )
+        for i in range(-skip_len, blksize):
+            j = (j + 1) % key_len
+            k = (box[j] + k) % key_len
+            box[j], box[k] = box[k], box[j]
+            if i >= 0:
+                yield box[(box[j] + box[k]) % key_len]
+
+    def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
+        return self.decrypt(plaindata, offset)
+
+    def decrypt(self, cipherdata: bytes, offset: int, /) -> bytes:
+        pending = len(cipherdata)
+        done = 0
+        offset = int(offset)
+        target_buffer = bytearray(cipherdata)
+
+        def mark(p: int) -> None:
+            nonlocal pending, done, offset
+
+            pending -= p
+            done += p
+            offset += p
+
+        if 0 <= offset < self.first_segment_size:
+            if pending > self.first_segment_size - offset:
+                blksize = self.first_segment_size - offset
+            else:
+                blksize = pending
+            target_buffer[:blksize] = bytestrxor(
+                target_buffer[:blksize],
+                self._yield_first_segment_keystream(blksize, offset)
+            )
+            mark(blksize)
+            if pending <= 0:
+                return bytes(target_buffer)
+
+        if offset % self.common_segment_size != 0:
+            if pending > self.common_segment_size - (offset % self.common_segment_size):
+                blksize = self.common_segment_size - (offset % self.common_segment_size)
+            else:
+                blksize = pending
+            target_buffer[done:done + blksize] = bytestrxor(
+                target_buffer[done:done + blksize],
+                self._yield_common_segment_keystream(blksize, offset)
+            )
+            mark(blksize)
+            if pending <= 0:
+                return bytes(target_buffer)
+
+        while pending > self.common_segment_size:
+            target_buffer[done:done + self.common_segment_size] = bytestrxor(
+                target_buffer[done:done + self.common_segment_size],
+                self._yield_common_segment_keystream(self.common_segment_size, offset)
+            )
+            mark(self.common_segment_size)
+
+        if pending > 0:
+            target_buffer[done:] = bytestrxor(
+                target_buffer[done:],
+                self._yield_common_segment_keystream(len(target_buffer[done:]), offset)
+            )
+
+        return bytes(target_buffer)
