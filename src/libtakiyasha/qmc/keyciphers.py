@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import warnings
 from base64 import b64decode, b64encode
 from math import tan
 from typing import Iterable, SupportsBytes
@@ -8,6 +9,7 @@ from typing import Iterable, SupportsBytes
 from ..common import BaseCipher
 from ..exceptions import CipherDecryptError, CipherEncryptError
 from ..stdciphers import TencentTEAWithModeCBC
+from ..warns import CipherDecryptWarning, CipherEncryptWarning
 
 __all__ = [
     'make_simple_key',
@@ -89,6 +91,11 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         }
 
     def encrypt(self, plaindata: bytes, /, *args) -> bytes:
+        warnings.warn(f"QMCv2 Key Encrypt V2 support is still incomplete, "
+                      f"unstable and experimental, and may exhibit erroneous behavior.",
+                      CipherEncryptWarning
+                      )
+
         qmcv2_key_encv1_key_encrypted = super().encrypt(plaindata)
         qmcv2_key_encv1_key_encrypted_b64encoded = b64encode(qmcv2_key_encv1_key_encrypted)
 
@@ -105,6 +112,11 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
 
     def decrypt(self, cipherdata: bytes, /, *args) -> bytes:
         # cipherdata 应当是 b64decode 之后，去除了开头 18 个字符的结果
+        warnings.warn(f"QMCv2 Key Encrypt V2 support is still incomplete, "
+                      f"unstable and experimental, and may exhibit erroneous behavior.",
+                      CipherDecryptWarning
+                      )
+
         try:
             decrypt_stage1: bytes = self._encrypt_stage2_decrypt_stage1_tea_cipher.decrypt(cipherdata, zero_check=True)
         except Exception as exc:
