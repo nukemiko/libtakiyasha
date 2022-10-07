@@ -1,16 +1,12 @@
 [project]
 name = "libtakiyasha"
-dynamic = ["version"]
+dynamic = ["dependencies", "readme", "version"]
 authors = [
     { name = "nukemiko" },
 ]
 description = "Python 音乐加解密工具库"
-readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
-dependencies = [
-    "pyaes"
-]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -28,7 +24,7 @@ keywords = ["unlock", "music", "audio", "qmc", "ncm", "mflac", "mgg", "netease",
 "Releases" = "https://github.com/nukemiko/libtakiyasha/releases"
 
 [build-system]
-requires = { file = ['requirements.txt'] }
+requires = ["setuptools >= 46.4.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -36,8 +32,8 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-namespaces = true
 
 [tool.setuptools.dynamic]
-version = { file = "src/libtakiyasha/VERSION" }
+dependencies = { file = ["requirements.txt"] }
 readme = { file = ["README.md"] }
+version = { file = "src/libtakiyasha/VERSION" }
