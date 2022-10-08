@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from functools import cached_property
 from os import PathLike
-from typing import ByteString, IO, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union
+from typing import ByteString, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union
 
 __all__ = [
     'T',
@@ -32,8 +31,12 @@ FilePath = Union[str, bytes, bytearray, PathLike]
 
 
 class Cipher(Protocol):
-    @cached_property
+    @property
     def offset_related(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    def keys(self) -> list[str]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
