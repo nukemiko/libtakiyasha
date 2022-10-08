@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import re
 from enum import Enum
+from io import BytesIO
 from typing import IO
 
-from .utils import verify_fileobj
+from .typedefs import *
+from .utils.typeutils import *
 
 __all__ = ['CommonAudioHeadersInRegexPattern']
 
@@ -38,6 +40,8 @@ class BitPaddedInt(int):
 
 
 class CommonAudioHeadersInRegexPattern(Enum):
+    """常见音频格式的文件头，为经过 ``re.compile()``
+    编译后的正则表达式对象，方便进行匹配。"""
     AAC: re.Pattern = re.compile(b'^\xff\xf1')
     AC3: re.Pattern = re.compile(b'\x0b\x77\xa1\x7a|\x0b\x77\x91\x64|\x0b\x77\x0b\xa0')
     APE: re.Pattern = re.compile(b'^MAC ')
@@ -58,8 +62,22 @@ class CommonAudioHeadersInRegexPattern(Enum):
         return str(self.name)
 
     @classmethod
-    def probe(cls, fileobj: IO[bytes]) -> CommonAudioHeadersInRegexPattern | None:
-        fileobj = verify_fileobj(fileobj, verify_binary_mode=True, verify_read=True, verify_seek=True)
+    def probe(cls,
+              fileobj_or_data: IO[bytes] | BytesLike
+              ) -> CommonAudioHeadersInRegexPattern | None:
+        """通过匹配文件头部，探测文件对象或数据 fileobj 的格式。
+
+        如果匹配到结果，返回匹配到的模式对应的枚举对象；否则返回 ``None``。
+        """
+        try:
+            fileobj = BytesIO(tobytes(fileobj_or_data))
+        except TypeError:
+            fileobj = verify_fileobj(fileobj_or_data,
+                                     'binary',
+                                     verify_readable=True,
+                                     verify_seekable=True,
+                                     verify_writable=False
+                                     )
 
         fileobj_oldpos = fileobj.seek(0, 1)
 
