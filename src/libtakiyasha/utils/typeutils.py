@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, Callable, IO, Literal
+from typing import Any, Callable, IO, Literal, Type
 
 from ..typedefs import *
 
 __all__ = [
+    'ClassInstanceProperty',
+    'CachedClassInstanceProperty',
     'tobytes',
     'tobytearray',
     'toint_nofloat',
@@ -13,6 +15,103 @@ __all__ = [
     'verify_fileobj',
     'verify_cipher'
 ]
+
+
+class ClassInstanceProperty:
+    """一个只读属性装饰器实现，通过此装饰器设置的只读属性，
+    可同时在类及其实例中访问。
+
+    通过此装饰器装饰的属性，在类未被实例化时，其
+    ``setter()`` 和 ``deleter()`` 不可用。
+
+    可用于设置一些需要在类及其实例中都保持只读的属性。
+    """
+
+    def __init__(self,
+                 fget: Callable[[T], Any] = None,
+                 fset: Callable[[T, Any], Any] = None,
+                 fdel: Callable[[T], Any] = None,
+                 doc: str = None
+                 ) -> None:
+        self.fget = fget
+        self.fset = fset
+        self.fdel = fdel
+        if doc is None and fget is not None:
+            doc = fget.__doc__
+        self.__doc__ = doc
+
+    def __get__(self, obj: T, objtype: Type[T] = None) -> Any:
+        if self.fget is None:
+            raise AttributeError("unreadable attribute")
+        if obj is None:
+            return self.fget(objtype)
+        return self.fget(obj)
+
+    def __set__(self, obj: T, value: Any) -> None:
+        if self.fset is None:
+            raise AttributeError("can't set attribute")
+        self.fset(obj, value)
+
+    def __delete__(self, obj: T) -> None:
+        if self.fdel is None:
+            raise AttributeError("can't delete attribute")
+        self.fdel(obj)
+
+    def getter(self, fget: Callable[[T], Any]):
+        return type(self)(fget, self.fset, self.fdel, self.__doc__)
+
+    def setter(self, fset: Callable[[T, Any], Any]):
+        return type(self)(self.fget, fset, self.fdel, self.__doc__)
+
+    def deleter(self, fdel: Callable[[T], Any]):
+        return type(self)(self.fget, self.fset, fdel, self.__doc__)
+
+
+class CachedClassInstanceProperty(ClassInstanceProperty):
+    """一个基于 ``ClassInstanceProperty`` 的只读属性装饰器实现，
+    其功能和 ``ClassInstanceProperty`` 一致，但为 ``getter()`` 增加了缓存功能：
+
+    首次访问属性后，本装饰器会记录上一次调用 ``getter()`` 返回的结果；
+
+    如果在下一次访问此属性之前，没有通过 ``setter()`` 或 ``deleter()``
+    修改属性，那么 ``getter()`` 会使用上次访问时的返回结果；
+
+    如果通过 ``setter()`` 或 ``deleter()`` 修改了属性，那么 ``getter()`` 会
+    再次调用 ``fget()``，记录并返回其返回值。
+    """
+
+    def __init__(self,
+                 fget: Callable[[T], Any] = None,
+                 fset: Callable[[T, Any], Any] = None,
+                 fdel: Callable[[T], Any] = None,
+                 doc: str = None
+                 ) -> None:
+        super().__init__(fget, fset, fdel, doc)
+
+        self._fget_return_changed = True
+        self._last_caller_self: T | None = None
+        self._last_fget_return = None
+
+    def __get__(self, obj: T, objtype: Type[T] = None) -> Any:
+        if self._last_caller_self != obj:
+            self._last_caller_self = obj
+            self._fget_return_changed = True
+        if self._fget_return_changed:
+            ret = super().__get__(obj, objtype)
+            self._last_fget_return = ret
+            self._fget_return_changed = False
+        else:
+            ret = self._last_fget_return
+
+        return ret
+
+    def __set__(self, obj: T, value: Any) -> None:
+        super().__set__(obj, value)
+        self._fget_return_changed = True
+
+    def __delete__(self, obj: T) -> None:
+        super().__delete__(obj)
+        self._fget_return_changed = True
 
 
 def tobytes(byteslike: BytesLike) -> bytes:
