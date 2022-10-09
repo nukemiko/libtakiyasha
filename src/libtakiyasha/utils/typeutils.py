@@ -122,6 +122,8 @@ def tobytes(byteslike: BytesLike) -> bytes:
     if isinstance(byteslike, int):
         # 防止出现 bytes(1000) 这样的情况
         raise TypeError(f"a bytes-like object is required, not '{type(byteslike).__name__}'")
+    elif isinstance(byteslike, bytes):
+        return byteslike
     else:
         return bytes(byteslike)
 
@@ -134,6 +136,8 @@ def tobytearray(byteslike: BytesLike) -> bytearray:
     if isinstance(byteslike, int):
         # 防止出现 bytearray(1000) 这样的情况
         raise TypeError(f"a bytes-like object is required, not '{type(byteslike).__name__}'")
+    elif isinstance(byteslike, bytearray):
+        return byteslike
     else:
         return bytearray(byteslike)
 
@@ -146,6 +150,8 @@ def toint_nofloat(integerlike: IntegerLike) -> int:
     """
     if isinstance(integerlike, float) or hasattr(integerlike, '__float__'):
         raise TypeError(f"'{type(integerlike).__name__}' object cannot be interpreted as an integer")
+    elif isinstance(integerlike, int):
+        return integerlike
     else:
         return int(integerlike)
 
