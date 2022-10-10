@@ -10,7 +10,7 @@ from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
 from .common import CipherSkel
-from .exceptions import CipherDecryptError
+from .exceptions import CipherDecryptingError
 from .typedefs import *
 from .utils import *
 from .utils.typeutils import *
@@ -323,7 +323,7 @@ class TencentTEAWithModeCBC(CipherSkel):
         pad_len = dest_buf[0] & 0x7
         out_buf_len = len(cipherdata) - pad_len - self.salt_len - self.zero_len - 1
         if pad_len + self.salt_len != 8:
-            raise CipherDecryptError(f'invalid pad length {pad_len}')
+            raise CipherDecryptingError(f'invalid pad length {pad_len}')
         out_buf = bytearray(out_buf_len)
 
         iv_previous = bytearray(8)
@@ -366,7 +366,7 @@ class TencentTEAWithModeCBC(CipherSkel):
             for i in range(1, self.zero_len):
                 if dest_idx < 8:
                     if dest_buf[dest_idx] ^ iv_previous[dest_idx] != 0:
-                        raise CipherDecryptError('zero check failed')
+                        raise CipherDecryptingError('zero check failed')
                     dest_idx += 1
                 elif dest_idx == 8:
                     crypt_block()
