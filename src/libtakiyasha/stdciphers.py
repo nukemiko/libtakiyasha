@@ -15,7 +15,12 @@ from .typedefs import *
 from .utils import *
 from .utils.typeutils import *
 
-__all__ = ['StreamedAESWithModeECB', 'TEAWithModeECB', 'TencentTEAWithModeCBC']
+__all__ = [
+    'StreamedAESWithModeECB',
+    'TEAWithModeECB',
+    'TencentTEAWithModeCBC',
+    'RC4'
+]
 
 # 为 TencentTEAWithModeCBC 的加密初始化随机数生成器
 random.seed()
