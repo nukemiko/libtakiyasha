@@ -148,7 +148,7 @@ def toint_nofloat(integerlike: IntegerLike) -> int:
     对 ``float`` 类型或拥有 ``__float__`` 属性的对象不适用。
     如果输入这样的值，会触发 ``TypeError``。
     """
-    if isinstance(integerlike, float) or hasattr(integerlike, '__float__'):
+    if isinstance(integerlike, float):
         raise TypeError(f"'{type(integerlike).__name__}' object cannot be interpreted as an integer")
     elif isinstance(integerlike, int):
         return integerlike
