@@ -165,13 +165,13 @@ def is_filepath(obj) -> bool:
     return isinstance(obj, (str, bytes)) or hasattr(obj, '__fspath__')
 
 
-def verify_fileobj(fileobj: IO,
+def verify_fileobj(fileobj: IO[str | bytes],
                    mode: Literal['text', 'binary'],
                    *,
                    verify_readable: bool = True,
                    verify_writable: bool = False,
                    verify_seekable: bool = True,
-                   ):
+                   ) -> IO[str | bytes]:
     """
 
     Args:
@@ -222,6 +222,8 @@ def verify_fileobj(fileobj: IO,
             if not hasattr(fileobj, 'write'):
                 raise TypeError(f"{repr(fileobj)} is not a valid file object")
             raise ValueError(f"cannot write to file object {repr(fileobj)}") from exc
+
+    return fileobj
 
 
 def verify_cipher(obj) -> Cipher:
