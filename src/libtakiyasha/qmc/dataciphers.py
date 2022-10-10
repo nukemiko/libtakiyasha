@@ -2,23 +2,32 @@
 from __future__ import annotations
 
 from functools import cached_property, lru_cache
-from typing import Generator, Iterable, SupportsBytes
+from typing import Generator
 
 from .consts import KEY256_MAPPING
-from ..common import BaseCipher
-from ..utils import bytestrxor
+from ..common import CipherSkel
+from ..typedefs import *
+from ..utils import *
+from ..utils.typeutils import *
 
 
-class Mask128(BaseCipher):
-    def __init__(self, mask128: SupportsBytes | Iterable[int], /):
-        super().__init__(mask128)
+class Mask128(CipherSkel):
+    @cached_property
+    def keys(self) -> list[str]:
+        return ['mask128']
 
-        if len(self.key['main']) != 128:
-            raise ValueError(f"invalid mask length (should be 128, got {len(self.key['main'])})")
+    @cached_property
+    def mask128(self) -> bytes:
+        return self._mask128
+
+    def __init__(self, mask128: BytesLike, /):
+        self._mask128 = tobytes(mask128)
+        if len(self._mask128) != 128:
+            raise ValueError(f"invalid mask length (should be 128, got {len(self._mask128)})")
 
     @classmethod
-    def from_qmcv1_mask44(cls, mask44: SupportsBytes | Iterable[int]) -> Mask128:
-        mask44: bytes = bytes(mask44)
+    def from_qmcv1_mask44(cls, mask44: BytesLike) -> Mask128:
+        mask44: bytes = tobytes(mask44)
         if len(mask44) != 44:
             raise ValueError(f'invalid mask length (should be 44, got {len(mask44)})')
 
@@ -33,8 +42,8 @@ class Mask128(BaseCipher):
         return cls(mask128)
 
     @classmethod
-    def from_qmcv1_mask256(cls, mask256: SupportsBytes | Iterable[int]) -> Mask128:
-        mask256: bytes = bytes(mask256)
+    def from_qmcv1_mask256(cls, mask256: BytesLike) -> Mask128:
+        mask256: bytes = tobytes(mask256)
         if len(mask256) != 256:
             raise ValueError(f'invalid mask length (should be 256, got {len(mask256)})')
 
@@ -48,8 +57,8 @@ class Mask128(BaseCipher):
         return cls(mask128)
 
     @classmethod
-    def from_qmcv2_key256(cls, key256: SupportsBytes | Iterable[int]) -> Mask128:
-        key256: bytes = bytes(key256)
+    def from_qmcv2_key256(cls, key256: BytesLike) -> Mask128:
+        key256: bytes = tobytes(key256)
         if len(key256) != 256:
             raise ValueError(f'invalid key length (should be 256, got {len(key256)})')
 
@@ -66,24 +75,26 @@ class Mask128(BaseCipher):
 
         return cls(mask128)
 
-    @property
+    @CachedClassInstanceProperty
     def offset_related(self) -> bool:
         return True
 
     @classmethod
     def yield_keystream(cls,
-                        mask128: SupportsBytes | Iterable[int],
-                        d_len: int,
-                        d_offset: int
+                        mask128: BytesLike,
+                        length: IntegerLike,
+                        offset: IntegerLike
                         ) -> Generator[int, None, None]:
-        mask128: bytes = bytes(mask128)
+        mask128: bytes = tobytes(mask128)
         if len(mask128) != 128:
             raise ValueError(f"invalid mask length (should be 128, got {len(mask128)})")
+        length = toint_nofloat(length)
+        offset = toint_nofloat(offset)
 
-        idx = d_offset - 1
-        idx128 = (d_offset % 128) - 1
+        idx = offset - 1
+        idx128 = (offset % 128) - 1
 
-        for _ in range(d_len):
+        for _ in range(length):
             idx += 1
             idx128 += 1
             if idx == 0x8000 or (idx > 0x8000 and idx % 0x8000 == 0x7fff):
@@ -93,26 +104,27 @@ class Mask128(BaseCipher):
 
             yield mask128[idx128]
 
-    def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         return self.decrypt(plaindata, offset)
 
-    def decrypt(self, cipherdata: bytes, offset: int, /) -> bytes:
-        return bytestrxor(cipherdata, self.yield_keystream(self.key['main'],
-                                                           len(cipherdata),
-                                                           offset
-                                                           )
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        cipherdata = tobytes(cipherdata)
+        offset = toint_nofloat(offset)
+
+        return bytestrxor(cipherdata,
+                          self.yield_keystream(self._mask128, len(cipherdata), offset)
                           )
 
 
-class HardenedRC4(BaseCipher):
-    @property
+class HardenedRC4(CipherSkel):
+    @CachedClassInstanceProperty
     def offset_related(self) -> bool:
         return True
 
     @cached_property
     def hash_base(self) -> int:
         base = 1
-        key = self.key['main']
+        key = self._key512
 
         for i in range(len(key)):
             v: int = key[i]
@@ -124,28 +136,37 @@ class HardenedRC4(BaseCipher):
             base = next_hash
         return base
 
-    @cached_property
+    @CachedClassInstanceProperty
     def first_segment_size(self) -> int:
         return 128
 
-    @cached_property
+    @CachedClassInstanceProperty
     def common_segment_size(self) -> int:
         return 5120
 
-    def __init__(self, key: SupportsBytes | Iterable[int], /):
-        super().__init__(key)
-        key_len = len(self.key['main'])
+    @cached_property
+    def keys(self) -> list[str]:
+        return ['key512']
+
+    @cached_property
+    def key512(self) -> bytes:
+        return self._key512
+
+    def __init__(self, key512: BytesLike, /):
+        self._key512 = tobytes(key512)
+
+        key_len = len(self._key512)
 
         self._box = bytearray(i % 256 for i in range(key_len))
         j = 0
         for i in range(key_len):
-            j = (j + self._box[i] + self.key['main'][i % key_len]) % key_len
+            j = (j + self._box[i] + self._key512[i % key_len]) % key_len
             self._box[i], self._box[j] = self._box[j], self._box[i]
 
     @lru_cache(maxsize=65536)
     def _get_segment_skip(self, value: int) -> int:
-        key = self.key['main']
-        key_len = len(self.key['main'])
+        key = self._key512
+        key_len = len(self._key512)
 
         seed = key[value % key_len]
         idx = int(self.hash_base / ((value + 1) * seed) * 100)
@@ -156,7 +177,7 @@ class HardenedRC4(BaseCipher):
                                        blksize: int,
                                        offset: int
                                        ) -> Generator[int, None, None]:
-        key = self.key['main']
+        key = self._key512
         for i in range(offset, offset + blksize):
             yield key[self._get_segment_skip(i)]
 
@@ -164,7 +185,7 @@ class HardenedRC4(BaseCipher):
                                         blksize: int,
                                         offset: int
                                         ) -> Generator[int, None, None]:
-        key_len = len(self.key['main'])
+        key_len = len(self._key512)
         box = self._box.copy()
         j, k = 0, 0
 
@@ -178,14 +199,14 @@ class HardenedRC4(BaseCipher):
             if i >= 0:
                 yield box[(box[j] + box[k]) % key_len]
 
-    def encrypt(self, plaindata: bytes, offset: int, /) -> bytes:
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         return self.decrypt(plaindata, offset)
 
-    def decrypt(self, cipherdata: bytes, offset: int, /) -> bytes:
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        target_buffer = tobytearray(cipherdata)
         pending = len(cipherdata)
         done = 0
-        offset = int(offset)
-        target_buffer = bytearray(cipherdata)
+        offset = toint_nofloat(offset)
 
         def mark(p: int) -> None:
             nonlocal pending, done, offset
