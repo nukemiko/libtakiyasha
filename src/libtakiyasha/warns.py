@@ -7,17 +7,17 @@ class LibTakiyashaWarning(Warning):
     pass
 
 
-class CipherEncryptWarning(LibTakiyashaWarning):
+class CipherEncryptingWarning(LibTakiyashaWarning):
     pass
 
 
-class CipherDecryptWarning(LibTakiyashaWarning):
+class CipherDecryptingWarning(LibTakiyashaWarning):
     pass
 
 
-class CrypterCreateWarning(LibTakiyashaWarning):
+class CrypterCreatingWarning(LibTakiyashaWarning):
     pass
 
 
-class CrypterSaveWarning(LibTakiyashaWarning):
+class CrypterSavingWarning(LibTakiyashaWarning):
     pass
