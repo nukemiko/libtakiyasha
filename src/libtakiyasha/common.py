@@ -55,7 +55,7 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
     """
 
     @property
-    def cipher(self) -> Cipher:
+    def cipher(self):
         """当前对象使用的 Cipher。"""
         return self._cipher
 
