@@ -399,15 +399,12 @@ class RC4(CipherSkel):
 
         # 使用 PRGA 生成密钥流
         meta_keystream = bytearray(256)
-        j = 0
-        for i in range(256):
-            i = (i + 1) % 256
-            j = (j + S[i]) % 256
-
-            S[i], S[j] = S[j], S[i]
-            K = S[(S[i] + S[j]) % 256]
-
-            meta_keystream[i] = K
+        for i, idx in enumerate(range(256), start=1):
+            i %= 256
+            si = S[i] % 256
+            sj = S[(i + si) % 256] % 256
+            K = S[(si + sj) % 256]
+            meta_keystream[idx] = K
 
         self._meta_keystream = bytes(meta_keystream)
 
