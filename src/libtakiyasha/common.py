@@ -59,6 +59,15 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
         """当前对象使用的 Cipher。"""
         return self._cipher
 
+    @cached_property
+    def name(self) -> str | None:
+        """一个文件路径，指向当前对象中的数据来源。
+
+        如果当前对象中的数据来自另一个文件对象，且这个文件对象的属性 ``name``
+        为 ``None`` 或不存在，那么访问此属性也会得到 ``None``。
+        """
+        return None
+
     def __init__(self, cipher: Cipher, /, initial_data: BytesLike = b''):
         """一个基于 BytesIO 的透明加密 IO 类实现，
         所有的读写操作都将通过一个透明加密层进行。
