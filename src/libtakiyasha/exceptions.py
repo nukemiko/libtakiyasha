@@ -6,17 +6,17 @@ class LibTakiyashaException(Exception):
     pass
 
 
-class CipherEncryptError(LibTakiyashaException):
+class CipherEncryptingError(LibTakiyashaException):
     pass
 
 
-class CipherDecryptError(LibTakiyashaException):
+class CipherDecryptingError(LibTakiyashaException):
     pass
 
 
-class CrypterCreateError(LibTakiyashaException):
+class CrypterCreatingError(LibTakiyashaException):
     pass
 
 
-class CrypterSaveError(LibTakiyashaException):
+class CrypterSavingError(LibTakiyashaException):
     pass
