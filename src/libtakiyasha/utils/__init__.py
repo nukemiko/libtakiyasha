@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping
 
+from .typeutils import *
 from ..typedefs import *
 
 __all__ = ['bytestrxor', 'getattribute', 'verify_literally_match', 'select']
@@ -67,7 +68,10 @@ def bytestrxor(term1: BytesLike, term2: BytesLike, /) -> bytes:
     ``term1`` 和 ``term2`` 在转换为 ``bytes`` 之后的长度必须相等，否则会触发
     ``ValueError``。
     """
-    if len(bytestring1 := term1) != len(bytestring2 := term2):
+    bytestring1 = tobytes(term1)
+    bytestring2 = tobytes(term2)
+
+    if len(bytestring1) != len(bytestring2):
         raise ValueError('only byte strings of equal length can be xored')
 
     return bytes(b1 ^ b2 for b1, b2 in zip(bytestring1, bytestring2))
