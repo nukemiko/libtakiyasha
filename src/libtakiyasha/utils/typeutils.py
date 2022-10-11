@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from threading import RLock
 from typing import Any, Callable, IO, Literal, Type
 
 from ..typedefs import *
@@ -28,9 +29,9 @@ class ClassInstanceProperty:
     """
 
     def __init__(self,
-                 fget: Callable[[T], Any] = None,
-                 fset: Callable[[T, Any], Any] = None,
-                 fdel: Callable[[T], Any] = None,
+                 fget: Callable[[T], RT] = None,
+                 fset: Callable[[T, PT], None] = None,
+                 fdel: Callable[[T], None] = None,
                  doc: str = None
                  ) -> None:
         self.fget = fget
@@ -39,32 +40,42 @@ class ClassInstanceProperty:
         if doc is None and fget is not None:
             doc = fget.__doc__
         self.__doc__ = doc
+        self._attrname = ''
 
-    def __get__(self, obj: T, objtype: Type[T] = None) -> Any:
+    def __set_name__(self, obj: T, attrname: str):
+        self._attrname = attrname
+
+    def __get__(self, obj: T, objtype: Type[T] = None) -> RT:
         if self.fget is None:
-            raise AttributeError("unreadable attribute")
+            raise AttributeError(f"unreadable attribute '{self._attrname}'")
         if obj is None:
             return self.fget(objtype)
         return self.fget(obj)
 
-    def __set__(self, obj: T, value: Any) -> None:
+    def __set__(self, obj: T, value: PT) -> None:
         if self.fset is None:
-            raise AttributeError("can't set attribute")
+            raise AttributeError(f"can't set attribute '{self._attrname}'")
         self.fset(obj, value)
 
     def __delete__(self, obj: T) -> None:
         if self.fdel is None:
-            raise AttributeError("can't delete attribute")
+            raise AttributeError(f"can't delete attribute '{self._attrname}'")
         self.fdel(obj)
 
     def getter(self, fget: Callable[[T], Any]):
-        return type(self)(fget, self.fset, self.fdel, self.__doc__)
+        prop = type(self)(fget, self.fset, self.fdel, self.__doc__)
+        prop._attrname = self._attrname
+        return prop
 
     def setter(self, fset: Callable[[T, Any], Any]):
-        return type(self)(self.fget, fset, self.fdel, self.__doc__)
+        prop = type(self)(self.fget, fset, self.fdel, self.__doc__)
+        prop._attrname = self._attrname
+        return prop
 
     def deleter(self, fdel: Callable[[T], Any]):
-        return type(self)(self.fget, self.fset, fdel, self.__doc__)
+        prop = type(self)(self.fget, self.fset, fdel, self.__doc__)
+        prop._attrname = self._attrname
+        return prop
 
 
 class CachedClassInstanceProperty(ClassInstanceProperty):
@@ -81,37 +92,41 @@ class CachedClassInstanceProperty(ClassInstanceProperty):
     """
 
     def __init__(self,
-                 fget: Callable[[T], Any] = None,
-                 fset: Callable[[T, Any], Any] = None,
-                 fdel: Callable[[T], Any] = None,
+                 fget: Callable[[T], RT] = None,
+                 fset: Callable[[T, PT], None] = None,
+                 fdel: Callable[[T], None] = None,
                  doc: str = None
                  ) -> None:
         super().__init__(fget, fset, fdel, doc)
+        self._lock = RLock()
 
-        self._fget_return_changed = True
-        self._last_caller_self: T | None = None
-        self._last_fget_return = None
+    def __get__(self, obj: T, objtype: Type[T] = None) -> RT:
+        if not hasattr(self, '_last_instance'):
+            self._last_instance = obj
+        elif self._last_instance != obj and hasattr(self, '_last_fget_returns'):
+            del self._last_fget_returns
 
-    def __get__(self, obj: T, objtype: Type[T] = None) -> Any:
-        if self._last_caller_self != obj:
-            self._last_caller_self = obj
-            self._fget_return_changed = True
-        if self._fget_return_changed:
-            ret = super().__get__(obj, objtype)
-            self._last_fget_return = ret
-            self._fget_return_changed = False
+        if not hasattr(self, '_last_fget_returns'):
+            with self._lock:
+                if not hasattr(self, '_last_fget_returns'):
+                    self._last_fget_returns = super().__get__(obj, objtype)
+                    return self._last_fget_returns
         else:
-            ret = self._last_fget_return
+            return self._last_fget_returns
 
-        return ret
-
-    def __set__(self, obj: T, value: Any) -> None:
+    def __set__(self, obj: T, value: PT) -> None:
+        if hasattr(self, '_last_fget_returns'):
+            with self._lock:
+                if hasattr(self, '_last_fget_returns'):
+                    del self._last_fget_returns
         super().__set__(obj, value)
-        self._fget_return_changed = True
 
     def __delete__(self, obj: T) -> None:
+        if hasattr(self, '_last_fget_returns'):
+            with self._lock:
+                if hasattr(self, '_last_fget_returns'):
+                    del self._last_fget_returns
         super().__delete__(obj)
-        self._fget_return_changed = True
 
 
 def tobytes(byteslike: BytesLike) -> bytes:

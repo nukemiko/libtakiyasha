@@ -8,6 +8,8 @@ __all__ = [
     'T',
     'KT',
     'VT',
+    'PT',
+    'RT',
     'AbleConvertToBytes',
     'AbleConvertToInt',
     'BytesLike',
@@ -20,6 +22,8 @@ __all__ = [
 T = TypeVar('T')
 KT = TypeVar('KT')
 VT = TypeVar('VT')
+PT = TypeVar('PT')
+RT = TypeVar('RT')
 
 AbleConvertToBytes = Union[SupportsBytes, Iterable[int], Sequence[int]]
 AbleConvertToInt = Union[SupportsInt, SupportsIndex]
