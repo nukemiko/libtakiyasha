@@ -6,7 +6,7 @@ from typing import Callable, IO, Type, Union
 
 from .dataciphers import *
 from .keyciphers import *
-from ..common import BytesIOWithTransparentCryptedLayer
+from ..common import BytesIOWithTransparentCryptLayer
 from ..typedefs import *
 from ..utils.typeutils import *
 
@@ -63,7 +63,7 @@ class QMCv2QTag:
         return b','.join([str(_).encode('utf-8') for _ in (self.master_key_encrypted_b64encoded, self.song_id, self.unknown1)])
 
 
-class QMC(BytesIOWithTransparentCryptedLayer):
+class QMC(BytesIOWithTransparentCryptLayer):
     @classmethod
     def from_file(cls,
                   filething: FilePath | IO[bytes], /,

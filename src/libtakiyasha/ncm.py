@@ -77,7 +77,7 @@ class NcmMusicIdentityTag:
         return ret
 
 
-class NCM(BytesIOWithTransparentCryptedLayer):
+class NCM(BytesIOWithTransparentCryptLayer):
     """NCM 格式文件的读取和创建支持。"""
 
     @cached_property
