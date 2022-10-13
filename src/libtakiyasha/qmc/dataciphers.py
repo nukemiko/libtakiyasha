@@ -10,6 +10,11 @@ from ..typedefs import *
 from ..utils import *
 from ..utils.typeutils import *
 
+__all__ = [
+    'Mask128',
+    'HardenedRC4'
+]
+
 
 class Mask128(CipherSkel):
     @cached_property
