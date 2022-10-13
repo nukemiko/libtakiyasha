@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import cached_property
 from io import BytesIO
 
-__all__ = ['CipherSkel', 'BytesIOWithTransparentCryptedLayer']
+__all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
 
 from .typedefs import *
 from .utils.typeutils import *
@@ -49,7 +49,7 @@ class CipherSkel:
         raise NotImplementedError
 
 
-class BytesIOWithTransparentCryptedLayer(BytesIO):
+class BytesIOWithTransparentCryptLayer(BytesIO):
     """一个基于 BytesIO 的透明加密 IO 类实现，
     所有的读写操作都将通过一个透明加密层进行。
     """
@@ -78,7 +78,7 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
             cipher: 加密/解密所需的 Cipher 对象
             initial_data: 包含初始已加密数据的类字节对象
         """
-        super(BytesIOWithTransparentCryptedLayer, self).__init__(tobytes(initial_data))
+        super(BytesIOWithTransparentCryptLayer, self).__init__(tobytes(initial_data))
 
         self._cipher = verify_cipher(cipher)
 
@@ -87,7 +87,7 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
 
         获取到的数据会在返回之前解密，但如果提供了参数
         ``nocryptlayer=True``，则会返回原始的加密数据。"""
-        value = super(BytesIOWithTransparentCryptedLayer, self).getvalue()
+        value = super(BytesIOWithTransparentCryptLayer, self).getvalue()
         if nocryptlayer:
             return value
         else:
@@ -100,7 +100,7 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
         添加透明加密层。因此，除非提供参数 ``nocryptlayer=True``，否则会触发
         ``NotImplementedError``。
         """
-        memview = super(BytesIOWithTransparentCryptedLayer, self).getbuffer()
+        memview = super(BytesIOWithTransparentCryptLayer, self).getbuffer()
         if nocryptlayer:
             return memview
         else:
@@ -123,11 +123,11 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
         else:
             size = toint_nofloat(size)
         if nocryptlayer:
-            return super(BytesIOWithTransparentCryptedLayer, self).read(size)
+            return super(BytesIOWithTransparentCryptLayer, self).read(size)
         else:
             curpos = self.tell()
             return self._cipher.decrypt(
-                super(BytesIOWithTransparentCryptedLayer, self).read(size), curpos
+                super(BytesIOWithTransparentCryptLayer, self).read(size), curpos
             )
 
     def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
@@ -150,10 +150,10 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
         """
         data = tobytes(data)
         if nocryptlayer:
-            return super(BytesIOWithTransparentCryptedLayer, self).write(data)
+            return super(BytesIOWithTransparentCryptLayer, self).write(data)
         else:
             curpos = self.tell()
-            return super(BytesIOWithTransparentCryptedLayer, self).write(
+            return super(BytesIOWithTransparentCryptLayer, self).write(
                 self._cipher.encrypt(data, curpos)
             )
 
@@ -164,7 +164,7 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
             - ``whence=2`` - 流的终点，``offset`` 通常都小于 0
         之后返回新的绝对位置。
         """
-        return super(BytesIOWithTransparentCryptedLayer, self).seek(
+        return super(BytesIOWithTransparentCryptLayer, self).seek(
             toint_nofloat(offset), toint_nofloat(whence)
         )
 
@@ -181,4 +181,4 @@ class BytesIOWithTransparentCryptedLayer(BytesIO):
         else:
             size = toint_nofloat(size)
 
-        return super(BytesIOWithTransparentCryptedLayer, self).truncate(size)
+        return super(BytesIOWithTransparentCryptLayer, self).truncate(size)
