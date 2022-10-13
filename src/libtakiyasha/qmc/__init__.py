@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import warnings
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from typing import Callable, IO, NamedTuple, Type, Union
@@ -77,6 +77,124 @@ class QMCv2QTag:
 
 
 class QMC(BytesIOWithTransparentCryptLayer):
+    @property
+    def simple_key(self) -> bytes | None:
+        return self._simple_key
+
+    @simple_key.setter
+    def simple_key(self, value: BytesLike) -> None:
+        self._simple_key = tobytes(value)
+
+    @simple_key.deleter
+    def simple_key(self) -> None:
+        self._simple_key = None
+
+    @property
+    def mix_key1(self) -> bytes | None:
+        return self._mix_key1
+
+    @mix_key1.setter
+    def mix_key1(self, value: BytesLike) -> None:
+        self._mix_key1 = tobytes(value)
+
+    @mix_key1.deleter
+    def mix_key1(self) -> None:
+        self._mix_key1 = None
+
+    @property
+    def mix_key2(self) -> bytes | None:
+        return self._mix_key2
+
+    @mix_key2.setter
+    def mix_key2(self, value: BytesLike) -> None:
+        self._mix_key2 = tobytes(value)
+
+    @mix_key2.deleter
+    def mix_key2(self) -> None:
+        self._mix_key2 = None
+
+    @property
+    def song_id(self) -> int:
+        return self._song_id
+
+    @song_id.setter
+    def song_id(self, value: IntegerLike) -> None:
+        self._song_id = toint_nofloat(value)
+
+    @song_id.deleter
+    def song_id(self) -> None:
+        self._song_id = 0
+
+    @property
+    def song_mid(self) -> str:
+        return self._song_mid
+
+    @song_mid.setter
+    def song_mid(self, value: str) -> None:
+        if isinstance(value, str):
+            self._song_mid = value
+        else:
+            raise TypeError(f"attribute 'song_mid' must be str, not {type(value).__name__}")
+
+    @song_mid.deleter
+    def song_mid(self) -> None:
+        self._song_mid = '0' * 14
+
+    @property
+    def qtag(self) -> QMCv2QTag:
+        if isinstance(self.cipher, Mask128):
+            master_key: bytes = self.cipher.original_mask_or_key
+        elif isinstance(self.cipher, HardenedRC4):
+            master_key: bytes = self.cipher.key512
+        else:
+            raise TypeError(f"unsupported Cipher: supports {Mask128.__name__} and {HardenedRC4}, "
+                            f"got {type(self.cipher).__name__}"
+                            )
+        if master_key is None:
+            raise ValueError(f'unable to restore the original master key')
+        if self._simple_key is None:
+            raise ValueError("attribute 'simple_key' is empty or not set")
+        return QMCv2QTag(_make_master_key_encrypted_encoded(master_key, 1, self._simple_key),
+                         self._song_id,
+                         2
+                         )
+
+    @property
+    def stag(self) -> QMCv2STag:
+        return QMCv2STag(self._song_id, 2, self._song_mid)
+
+    def __init__(self,
+                 cipher: QMCDataCiphers, /,
+                 initial_data: BytesLike = b'',
+                 simple_key: BytesLike = None,
+                 mix_key1: BytesLike = None,
+                 mix_key2: BytesLike = None, *,
+                 song_id: int = 0,
+                 song_mid: str = '0' * 14
+                 ) -> None:
+        if simple_key is None:
+            self._simple_key = None
+        else:
+            self._simple_key = tobytes(simple_key)
+        if mix_key1 is None:
+            self._mix_key1 = None
+        else:
+            self._mix_key1 = tobytes(mix_key1)
+        if mix_key2 is None:
+            self._mix_key2 = None
+        else:
+            self._mix_key2 = tobytes(mix_key2)
+        self._song_id = toint_nofloat(song_id)
+        if isinstance(song_mid, str):
+            self._song_mid = song_mid
+        else:
+            raise TypeError(f"argument 'song_mid' must be str, not {type(song_mid).__name__}")
+        super().__init__(cipher, initial_data)
+        if not isinstance(cipher, (Mask128, HardenedRC4)):
+            raise TypeError(f"unsupported Cipher: supports {Mask128.__name__} and {HardenedRC4}, "
+                            f"got {type(cipher).__name__}"
+                            )
+
     @classmethod
     def from_file(cls,
                   filething: FilePath | IO[bytes], /,
@@ -286,3 +404,31 @@ def _extract(fileobj: IO[bytes],
     audio_encrypted = fileobj.read(probe_result.audio_encrypted_len)
 
     return QMC(cipher, audio_encrypted)
+
+
+def _make_master_key_encrypted_encoded(master_key: bytes,
+                                       keyencver: int,
+                                       simple_key: bytes,
+                                       mix_key1: bytes = None,
+                                       mix_key2: bytes = None
+                                       ) -> bytes:
+    if keyencver == 1:
+        master_key_encrypted = QMCv2KeyEncryptV1(simple_key).encrypt(master_key)
+    elif keyencver == 2:
+        if mix_key1 is None and mix_key2 is None:
+            raise TypeError("QMC version is 2 and master key encryption version is 2, "
+                            "argument 'mix_key1' and 'mix_key2' is required"
+                            )
+        elif mix_key1 is None:
+            raise TypeError("QMC version is 2 and master key encryption version is 2, "
+                            "argument 'mix_key1' is required"
+                            )
+        elif mix_key2 is None:
+            raise TypeError("QMC version is 2 and master key encryption version is 2, "
+                            "argument 'mix_key2' is required"
+                            )
+        master_key_encrypted = b'QQMusic EncV2,Key:' + QMCv2KeyEncryptV2(simple_key, mix_key1, mix_key2).encrypt(master_key)
+    else:
+        raise ValueError(f"'keyencver' must be 1 or 2, not {keyencver}")
+
+    return b64encode(master_key_encrypted)
