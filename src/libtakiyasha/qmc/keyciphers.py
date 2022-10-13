@@ -86,7 +86,7 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         return self._mix_key1
 
     @cached_property
-    def mix_keys(self) -> bytes:
+    def mix_key2(self) -> bytes:
         return self._mix_key2
 
     def __init__(self, simple_key: BytesLike, mix_key1: BytesLike, mix_key2: BytesLike, /):
