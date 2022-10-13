@@ -32,7 +32,7 @@ class QMCFileStructureProbeResult(NamedTuple):
 class QMCv2STag:
     song_id: int
     unknown1: int
-    unknown2: str
+    song_mid: str
 
     @classmethod
     def from_bytes(cls, stag_bytestr: BytesLike) -> QMCv2STag:
@@ -44,12 +44,12 @@ class QMCv2STag:
                              )
         song_id = int(stag_segments[0])
         unknown1 = int(stag_segments[1])
-        unknown2 = stag_segments[2].decode(encoding='utf-8')
+        song_mid = stag_segments[2].decode(encoding='utf-8')
 
-        return cls(song_id, unknown1, unknown2)
+        return cls(song_id, unknown1, song_mid)
 
     def to_bytes(self) -> bytes:
-        return b','.join([str(_).encode('utf-8') for _ in (self.song_id, self.unknown1, self.unknown2)])
+        return b','.join([str(_).encode('utf-8') for _ in (self.song_id, self.unknown1, self.song_mid)])
 
 
 @dataclass
@@ -73,7 +73,7 @@ class QMCv2QTag:
         return cls(master_key_encrypted_b64encoded, song_id, unknown1)
 
     def to_bytes(self) -> bytes:
-        return b','.join([str(_).encode('utf-8') for _ in (self.master_key_encrypted_b64encoded, self.song_id, self.unknown1)])
+        return self.master_key_encrypted_b64encoded + b','.join([str(_).encode('utf-8') for _ in ('', self.song_id, self.unknown1)])
 
 
 class QMC(BytesIOWithTransparentCryptLayer):
