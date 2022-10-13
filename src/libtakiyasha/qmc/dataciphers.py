@@ -19,7 +19,11 @@ __all__ = [
 class Mask128(CipherSkel):
     @cached_property
     def keys(self) -> list[str]:
-        return ['mask128']
+        return ['mask128', 'original_mask_or_key']
+
+    @cached_property
+    def original_mask_or_key(self) -> bytes | None:
+        return self._original_mask_or_key
 
     @cached_property
     def mask128(self) -> bytes:
@@ -27,6 +31,7 @@ class Mask128(CipherSkel):
 
     def __init__(self, mask128: BytesLike, /):
         self._mask128 = tobytes(mask128)
+        self._original_mask_or_key: bytes | None = None
         if len(self._mask128) != 128:
             raise ValueError(f"invalid mask length (should be 128, got {len(self._mask128)})")
 
@@ -78,7 +83,10 @@ class Mask128(CipherSkel):
 
             mask128[idx128] = ((value << rotate) % 256) | ((value >> rotate) % 256)
 
-        return cls(mask128)
+        ret = cls(mask128)
+        ret._original_mask_or_key = key256
+
+        return ret
 
     @CachedClassInstanceProperty
     def offset_related(self) -> bool:
