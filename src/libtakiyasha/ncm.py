@@ -14,6 +14,7 @@ from .formatprober import *
 from .stdciphers import RC4, StreamedAESWithModeECB
 from .typedefs import *
 from .utils import *
+from .utils.keyutils import *
 from .utils.typeutils import *
 from .warns import CrypterCreatingWarning
 
@@ -110,23 +111,9 @@ class NCM(BytesIOWithTransparentCryptLayer):
         """
         return _make_ncm_163key(self._ncm_tag)
 
-    @property
-    def core_key(self) -> bytes | None:
-        """核心密钥，用于加密/解密主密钥（``self.cipher.masterkey``）。"""
-        return self._core_key
-
-    @core_key.setter
-    def core_key(self, value: BytesLike) -> None:
-        self._core_key = tobytes(value)
-
-    @core_key.deleter
-    def core_key(self) -> None:
-        self._core_key = None
-
     def __init__(self,
                  cipher: RC4, /,
-                 initial_data: BytesLike = b'',
-                 core_key: BytesLike = None, *,
+                 initial_data: BytesLike = b'', *,
                  ncm_tag: NcmMusicIdentityTag | Mapping[str, Any] | Iterable[tuple[str, Any]] = None,
                  cover_data: BytesLike = b'',
                  ) -> None:
@@ -135,7 +122,6 @@ class NCM(BytesIOWithTransparentCryptLayer):
         Args:
             cipher: 加密/解密所需的 Cipher 对象
             initial_data: 可选，包含初始已加密数据的类字节对象
-            core_key: 可选，核心密钥，将会存储为同名属性以便 saveto_file() 方法使用
         """
         if ncm_tag is None:  # 未指定，自动创建
             ncm_tag = NcmMusicIdentityTag()
@@ -143,10 +129,6 @@ class NCM(BytesIOWithTransparentCryptLayer):
             ncm_tag = NcmMusicIdentityTag.from_mapping(ncm_tag)
         self._ncm_tag: NcmMusicIdentityTag = ncm_tag
         self._cover_data: bytes = tobytes(cover_data)
-        if core_key is None:
-            self._core_key: bytes | None = None
-        else:
-            self._core_key: bytes | None = tobytes(core_key)
         super().__init__(cipher, initial_data)
         if not isinstance(cipher, RC4):
             raise TypeError(f"unsupported Cipher '{type(cipher).__name__}' "
@@ -155,29 +137,28 @@ class NCM(BytesIOWithTransparentCryptLayer):
         self._name: str | None = None
 
     @classmethod
-    def new(cls, master_key: BytesLike, core_key: BytesLike = None) -> NCM:
-        """创建一个空的 NCM 对象。主密钥 ``master_key`` 是必需的。
+    def new(cls) -> NCM:
+        """创建一个空的 NCM 对象。"""
+        master_key = (make_random_number_string(29) + make_random_ascii_string(84)).encode('utf-8')
 
-        核心密钥 ``core_key`` 是可选的，如果提供此参数，其将会作为返回的 NCM 实例
-        ``core_key`` 属性的值。
-        """
-        return cls(RC4(master_key), core_key=core_key)
+        return cls(RC4(master_key))
 
     @classmethod
     def from_file(cls,
-                  filething: FilePath | IO[bytes],
                   core_key: BytesLike,
+                  filething: FilePath | IO[bytes],
+                  /,
                   validate: bool = False
                   ) -> NCM:
         """打开一个已有的 NCM 文件 ``filething``。
 
-        ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
-        属性的路径对象。``filething`` 也可以是文件对象，该对象必须可读和可跳转
-        （``filething.seekable() == True``）。
-
         本方法需要在文件中寻找并解密主密钥，随后使用主密钥解密音频数据。
 
-        核心密钥 ``core_key`` 用于解密找到的主密钥。
+        核心密钥 ``core_key`` 是第一个位置参数，用于解密找到的主密钥。
+
+        第二个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        属性的路径对象。``filething`` 也可以是文件对象，该对象必须可读和可跳转
+        （``filething.seekable() == True``）。
 
         如果提供参数 ``validate=True``，本方法会验证解密的结果是否为常见的音频格式。
         如果验证未通过，将打印一条警告信息。
@@ -204,38 +185,31 @@ class NCM(BytesIOWithTransparentCryptLayer):
         return instance
 
     def saveto_file(self,
-                    filething: FilePath | IO[bytes] = None,
-                    core_key: BytesLike = None
+                    core_key: BytesLike,
+                    filething: FilePath | IO[bytes] = None, /
                     ) -> None:
         """将当前 NCM 对象保存到文件 ``filething``。
         此过程会向 ``filething`` 写入 NCM 文件结构。
 
-        ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        第一个位置参数 ``core_key`` 是必选的，本方法会将其作为核心密钥来加密主密钥。
+
+        第二个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
         属性的路径对象。``filething`` 也可以是文件对象，该对象必须可写和可跳转
         （``filething.seekable() == True``）。
 
-        如果提供了 ``filething``，本方法将会把数据写入 ``filething`` 指向的文件。否则，将数据写入
-        ``self.name``。如果两者都为空或未提供，则会触发 ``ValueError``。
-
-        如果提供了 ``core_key``，本方法会将其作为核心密钥来加密主密钥。否则，
-        使用当前对象的同名属性作为核心密钥。如果两者都为空或未提供，则会触发 ``ValueError``。
+        如果提供了 ``filething``，本方法将会把数据写入 ``filething``
+        指向的文件。否则，本方法以写入模式打开一个指向 ``self.name``
+        的文件对象，将数据写入此文件对象。如果两者都为空或未提供，则会触发
+        ``ValueError``。
         """
-        if core_key is None:
-            if self.core_key is None:
-                raise ValueError("attribute 'self.core_key' and argument 'core_key' is not provided, "
-                                 "unable to continue the export"
-                                 )
-            else:
-                core_key = self.core_key
-        else:
-            core_key = tobytes(core_key)
+        core_key = tobytes(core_key)
 
         cipher: RC4 = self.cipher
 
         if filething is None:
             if self.name is None:
                 raise ValueError("attribute 'self.name' and argument 'filething' is not provided, "
-                                 "unable to continue the export"
+                                 "unable to continue the saving"
                                  )
             else:
                 filething = self.name
@@ -351,7 +325,7 @@ def _extract(fileobj: IO[bytes], core_key: bytes) -> NCM:
     offset, cover_data = _extract_cover_data(fileobj, offset)
     audio_data = _extract_encrypted_audio_data(fileobj, offset)
 
-    ncm = NCM(cipher, audio_data, core_key, ncm_tag=ncm_tag, cover_data=cover_data)
+    ncm = NCM(cipher, audio_data, ncm_tag=ncm_tag, cover_data=cover_data)
     ncm._name = getattr(fileobj, 'name', None)
 
     return ncm
