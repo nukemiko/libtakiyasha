@@ -111,9 +111,26 @@ class NCM(BytesIOWithTransparentCryptLayer):
         """
         return _make_ncm_163key(self._ncm_tag)
 
+    @property
+    def core_key(self) -> bytes | None:
+        """加/解密主密钥使用的核心密钥。
+
+        在打开已有 NCM 文件时，此属性会被自动设置；也可以直接设置此属性。
+        """
+        return self._core_key
+
+    @core_key.setter
+    def core_key(self, value: BytesLike) -> None:
+        self._core_key = tobytes(value)
+
+    @core_key.deleter
+    def core_key(self) -> None:
+        self._core_key = None
+
     def __init__(self,
                  cipher: RC4, /,
-                 initial_data: BytesLike = b'', *,
+                 initial_data: BytesLike = b'',
+                 core_key: BytesLike = None, *,
                  ncm_tag: NcmMusicIdentityTag | Mapping[str, Any] | Iterable[tuple[str, Any]] = None,
                  cover_data: BytesLike = b'',
                  ) -> None:
@@ -123,6 +140,10 @@ class NCM(BytesIOWithTransparentCryptLayer):
             cipher: 加密/解密所需的 Cipher 对象
             initial_data: 可选，包含初始已加密数据的类字节对象
         """
+        if core_key is None:
+            self._core_key = None
+        else:
+            self._core_key = tobytes(core_key)
         if ncm_tag is None:  # 未指定，自动创建
             ncm_tag = NcmMusicIdentityTag()
         elif not isinstance(ncm_tag, NcmMusicIdentityTag):  # 由 NcmMusicIdentityTag 进行转换和错误处理
@@ -145,9 +166,8 @@ class NCM(BytesIOWithTransparentCryptLayer):
 
     @classmethod
     def from_file(cls,
+                  filething: FilePath | IO[bytes], /,
                   core_key: BytesLike,
-                  filething: FilePath | IO[bytes],
-                  /,
                   validate: bool = False
                   ) -> NCM:
         """打开一个已有的 NCM 文件 ``filething``。
@@ -182,27 +202,40 @@ class NCM(BytesIOWithTransparentCryptLayer):
                           CrypterCreatingWarning
                           )
 
+        instance._name = getattr(fileobj, 'name', None)
+
         return instance
 
     def saveto_file(self,
-                    core_key: BytesLike,
-                    filething: FilePath | IO[bytes] = None, /
+                    filething: FilePath | IO[bytes] = None, /,
+                    core_key: BytesLike = None,
                     ) -> None:
         """将当前 NCM 对象保存到文件 ``filething``。
         此过程会向 ``filething`` 写入 NCM 文件结构。
 
-        第一个位置参数 ``core_key`` 是必选的，本方法会将其作为核心密钥来加密主密钥。
-
-        第二个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        第一个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
         属性的路径对象。``filething`` 也可以是文件对象，该对象必须可写和可跳转
         （``filething.seekable() == True``）。
+
+        第二个位置参数 ``core_key`` 是可选的。
+        如果提供此参数，本方法会将其作为核心密钥来加密主密钥；否则，使用
+        ``self.core_key`` 代替。如果两者都为 ``None`` 或未提供，触发 ``ValueError``。
 
         如果提供了 ``filething``，本方法将会把数据写入 ``filething``
         指向的文件。否则，本方法以写入模式打开一个指向 ``self.name``
         的文件对象，将数据写入此文件对象。如果两者都为空或未提供，则会触发
         ``ValueError``。
         """
-        core_key = tobytes(core_key)
+        if core_key is None:
+            if self.core_key is None:
+                raise ValueError("core key missing: "
+                                 "argument 'core_key' and attribute 'self.core_key' are "
+                                 "empty or unspecified"
+                                 )
+            else:
+                core_key = self.core_key
+        else:
+            core_key = tobytes(core_key)
 
         cipher: RC4 = self.cipher
 
@@ -216,25 +249,25 @@ class NCM(BytesIOWithTransparentCryptLayer):
 
         if is_filepath(filething):
             with open(filething, mode='wb') as fileobj:
-                return _create(fileobj,
-                               core_key,
-                               cipher,
-                               self._ncm_tag,
-                               self._cover_data,
-                               self.getvalue(nocryptlayer=True)
-                               )
+                _create(fileobj,
+                        core_key,
+                        cipher,
+                        self._ncm_tag,
+                        self._cover_data,
+                        self.getvalue(nocryptlayer=True)
+                        )
         else:
             fileobj = verify_fileobj(filething, 'binary',
                                      verify_writable=True,
                                      verify_seekable=True
                                      )
-            return _create(fileobj,
-                           core_key,
-                           cipher,
-                           self._ncm_tag,
-                           self._cover_data,
-                           self.getvalue(nocryptlayer=True)
-                           )
+            _create(fileobj,
+                    core_key,
+                    cipher,
+                    self._ncm_tag,
+                    self._cover_data,
+                    self.getvalue(nocryptlayer=True)
+                    )
 
 
 def _ensure_is_ncmfile(fileobj: IO[bytes], offset: int) -> int:
@@ -325,8 +358,7 @@ def _extract(fileobj: IO[bytes], core_key: bytes) -> NCM:
     offset, cover_data = _extract_cover_data(fileobj, offset)
     audio_data = _extract_encrypted_audio_data(fileobj, offset)
 
-    ncm = NCM(cipher, audio_data, ncm_tag=ncm_tag, cover_data=cover_data)
-    ncm._name = getattr(fileobj, 'name', None)
+    ncm = NCM(cipher, audio_data, ncm_tag=ncm_tag, cover_data=cover_data, core_key=core_key)
 
     return ncm
 
