@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from functools import cached_property, lru_cache
+from functools import lru_cache
 from typing import Generator
 
 from .consts import KEY256_MAPPING
@@ -17,15 +17,15 @@ __all__ = [
 
 
 class Mask128(CipherSkel):
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['mask128', 'original_mask_or_key']
 
-    @cached_property
+    @property
     def original_mask_or_key(self) -> bytes | None:
         return self._original_mask_or_key
 
-    @cached_property
+    @property
     def mask128(self) -> bytes:
         return self._mask128
 
@@ -134,7 +134,7 @@ class HardenedRC4(CipherSkel):
     def offset_related(self) -> bool:
         return True
 
-    @cached_property
+    @property
     def hash_base(self) -> int:
         base = 1
         key = self._key512
@@ -157,11 +157,11 @@ class HardenedRC4(CipherSkel):
     def common_segment_size(self) -> int:
         return 5120
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['key512']
 
-    @cached_property
+    @property
     def key512(self) -> bytes:
         return self._key512
 
