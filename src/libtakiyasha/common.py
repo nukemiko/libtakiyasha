@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from functools import cached_property
 from io import BytesIO
 
 __all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
@@ -13,7 +12,7 @@ from .utils.typeutils import *
 class CipherSkel:
     """为 Cipher 类提供的框架，本身没有任何实际功能。"""
 
-    @cached_property
+    @ClassInstanceProperty
     def offset_related(self) -> bool:
         """此 Cipher 的加密/解密是否依赖于根据输入数据在文件中的具体位置。
 
@@ -22,7 +21,7 @@ class CipherSkel:
         """
         raise NotImplementedError
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         """一个字典，包括所有用到的密钥在此 Cipher 中的属性名称。
 
@@ -59,7 +58,7 @@ class BytesIOWithTransparentCryptLayer(BytesIO):
         """当前对象使用的 Cipher。"""
         return self._cipher
 
-    @cached_property
+    @property
     def name(self) -> str | None:
         """一个文件路径，指向当前对象中的数据来源。
 

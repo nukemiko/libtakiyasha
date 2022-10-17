@@ -5,7 +5,6 @@ import json
 import warnings
 from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
-from functools import cached_property
 from typing import Any, IO, Iterable, Mapping
 
 from .common import *
@@ -81,7 +80,7 @@ class NcmMusicIdentityTag:
 class NCM(BytesIOWithTransparentCryptLayer):
     """NCM 格式文件的读取和创建支持。"""
 
-    @cached_property
+    @property
     def name(self) -> str | None:
         return self._name
 

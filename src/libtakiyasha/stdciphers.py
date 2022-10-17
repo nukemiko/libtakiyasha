@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import random
-from functools import cached_property, partial
+from functools import partial
 from io import BytesIO
 from typing import Generator
 
@@ -33,11 +33,11 @@ class StreamedAESWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['masterkey']
 
-    @cached_property
+    @property
     def masterkey(self) -> bytes:
         """主要的密钥。"""
         return self._key
@@ -71,11 +71,11 @@ class TEAWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['masterkey']
 
-    @cached_property
+    @property
     def masterkey(self) -> bytes:
         """主要的密钥。"""
         return self._key
@@ -166,7 +166,7 @@ class TencentTEAWithModeCBC(CipherSkel):
     def zero_len(self) -> int:
         return 7
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['masterkey', 'lower_level_cipher_key']
 
@@ -412,11 +412,11 @@ class RC4(CipherSkel):
     def offset_related(self) -> bool:
         return True
 
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['masterkey']
 
-    @cached_property
+    @property
     def masterkey(self) -> bytes:
         """主要的密钥。"""
         return self._key

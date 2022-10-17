@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import warnings
 from base64 import b64decode, b64encode
-from functools import cached_property
 from math import tan
 
 from ..common import CipherSkel
@@ -25,15 +24,15 @@ def make_simple_key(salt: int, length: int) -> bytes:
 
 
 class QMCv2KeyEncryptV1(CipherSkel):
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['simple_key']
 
-    @cached_property
+    @property
     def simple_key(self) -> bytes:
         return self._simple_key
 
-    @cached_property
+    @property
     def offset_related(self) -> bool:
         return False
 
@@ -77,15 +76,15 @@ class QMCv2KeyEncryptV1(CipherSkel):
 
 
 class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
-    @cached_property
+    @property
     def keys(self) -> list[str]:
         return ['simple_key', 'mix_key1', 'mix_key2']
 
-    @cached_property
+    @property
     def mix_key1(self) -> bytes:
         return self._mix_key1
 
-    @cached_property
+    @property
     def mix_key2(self) -> bytes:
         return self._mix_key2
 
