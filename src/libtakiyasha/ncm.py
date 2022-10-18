@@ -2,20 +2,17 @@
 from __future__ import annotations
 
 import json
-import warnings
 from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
 from typing import Any, IO, Iterable, Mapping
 
 from .common import BytesIOWithTransparentCryptLayer
 from .exceptions import CrypterCreatingError
-from .formatprober import CommonAudioHeadersInRegexPattern
 from .keyutils import make_random_ascii_string, make_random_number_string
 from .miscutils import bytestrxor
 from .stdciphers import RC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import is_filepath, tobytes, verify_fileobj
-from .warns import CrypterCreatingWarning
 
 __all__ = ['NcmMusicIdentityTag', 'NCM']
 
@@ -170,8 +167,7 @@ class NCM(BytesIOWithTransparentCryptLayer):
     @classmethod
     def from_file(cls,
                   filething: FilePath | IO[bytes], /,
-                  core_key: BytesLike,
-                  validate: bool = False
+                  core_key: BytesLike
                   ) -> NCM:
         """打开一个已有的 NCM 文件 ``filething``。
 
@@ -182,9 +178,6 @@ class NCM(BytesIOWithTransparentCryptLayer):
         第二个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
         属性的路径对象。``filething`` 也可以是文件对象，该对象必须可读和可跳转
         （``filething.seekable() == True``）。
-
-        如果提供参数 ``validate=True``，本方法会验证解密的结果是否为常见的音频格式。
-        如果验证未通过，将打印一条警告信息。
         """
         if core_key is not None:
             core_key = tobytes(core_key)
@@ -198,12 +191,6 @@ class NCM(BytesIOWithTransparentCryptLayer):
                                      verify_seekable=True
                                      )
             instance = _extract(fileobj, core_key)
-
-        if validate and not CommonAudioHeadersInRegexPattern.probe(instance):
-            warnings.warn("decrypted data header does not match any common audio file headers. "
-                          "Possible cases: broken data, incorrect core_key, or not a NCM file",
-                          CrypterCreatingWarning
-                          )
 
         instance._name = getattr(fileobj, 'name', None)
 
