@@ -209,10 +209,10 @@ class NCM(BytesIOWithTransparentCryptLayer):
 
         return instance
 
-    def saveto_file(self,
-                    filething: FilePath | IO[bytes] = None, /,
-                    core_key: BytesLike = None,
-                    ) -> None:
+    def to_file(self,
+                filething: FilePath | IO[bytes] = None, /,
+                core_key: BytesLike = None,
+                ) -> None:
         """将当前 NCM 对象保存到文件 ``filething``。
         此过程会向 ``filething`` 写入 NCM 文件结构。
 
