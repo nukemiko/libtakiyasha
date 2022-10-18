@@ -16,7 +16,7 @@ from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 from .common import CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import *
-from .utils import *
+from .miscutils import *
 from .typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 
 __all__ = [
