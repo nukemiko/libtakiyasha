@@ -10,7 +10,7 @@ except ImportError:
     import _pyio as io
 from typing import IO
 
-from .typedefs import *
+from .typedefs import BytesLike
 from .typeutils import tobytes, verify_fileobj
 
 __all__ = ['CommonAudioHeadersInRegexPattern']

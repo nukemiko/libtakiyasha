@@ -7,13 +7,13 @@ from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
 from typing import Any, IO, Iterable, Mapping
 
-from .common import *
+from .common import BytesIOWithTransparentCryptLayer
 from .exceptions import CrypterCreatingError
-from .formatprober import *
+from .formatprober import CommonAudioHeadersInRegexPattern
 from .keyutils import make_random_ascii_string, make_random_number_string
-from .miscutils import *
+from .miscutils import bytestrxor
 from .stdciphers import RC4, StreamedAESWithModeECB
-from .typedefs import *
+from .typedefs import BytesLike, FilePath
 from .typeutils import is_filepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
