@@ -141,6 +141,19 @@ class QMC(BytesIOWithTransparentCryptLayer):
         self._song_mid = '0' * 14
 
     @property
+    def master_key(self):
+        if isinstance(self.cipher, Mask128):
+            if self.cipher.original_mask_or_key is not None:
+                return self.cipher.original_mask_or_key
+            raise AttributeError('cannot get master key')
+        elif isinstance(self.cipher, HardenedRC4):
+            return self.cipher.key512
+        else:
+            raise TypeError(f"unsupported Cipher: supports {Mask128.__name__} and {HardenedRC4}, "
+                            f"got {type(self.cipher).__name__}"
+                            )
+
+    @property
     def qtag(self) -> QMCv2QTag:
         if isinstance(self.cipher, Mask128):
             master_key: bytes = self.cipher.original_mask_or_key

@@ -6,8 +6,6 @@ try:
 except ImportError:
     import _pyio as io
 
-__all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
-
 from .typedefs import *
 from .utils.typeutils import *
 
@@ -70,7 +68,11 @@ class BytesIOWithTransparentCryptLayer(io.BytesIO):
         如果当前对象中的数据来自另一个文件对象，且这个文件对象的属性 ``name``
         为 ``None`` 或不存在，那么访问此属性也会得到 ``None``。
         """
-        return None
+        return getattr(self, '_name', None)
+
+    @property
+    def master_key(self) -> bytes:
+        raise NotImplementedError
 
     def __init__(self, cipher: Cipher, /, initial_data: BytesLike = b''):
         """一个基于 BytesIO 的透明加密 IO 类实现，

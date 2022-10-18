@@ -81,8 +81,8 @@ class NCM(BytesIOWithTransparentCryptLayer):
     """NCM 格式文件的读取和创建支持。"""
 
     @property
-    def name(self) -> str | None:
-        return self._name
+    def cipher(self) -> RC4:
+        return self._cipher
 
     @property
     def cover_data(self) -> bytes:
@@ -117,6 +117,10 @@ class NCM(BytesIOWithTransparentCryptLayer):
         在打开已有 NCM 文件时，此属性会被自动设置；也可以直接设置此属性。
         """
         return self._core_key
+
+    @property
+    def master_key(self) -> bytes:
+        return self.cipher.masterkey
 
     @core_key.setter
     def core_key(self, value: BytesLike) -> None:
