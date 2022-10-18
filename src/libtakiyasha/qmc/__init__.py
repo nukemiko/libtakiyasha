@@ -10,9 +10,9 @@ from .dataciphers import *
 from .keyciphers import *
 from ..common import *
 from ..exceptions import *
+from ..keyutils import make_random_ascii_string, make_salt
 from ..typedefs import *
 from ..typeutils import is_filepath, tobytes, toint_nofloat, verify_fileobj
-from ..utils.keyutils import *
 
 
 @dataclass
