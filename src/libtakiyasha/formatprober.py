@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from io import BytesIO
+
+try:
+    import io
+except ImportError:
+    import _pyio as io
 from typing import IO
 
 from .typedefs import *
@@ -70,7 +74,7 @@ class CommonAudioHeadersInRegexPattern(Enum):
         如果匹配到结果，返回匹配到的模式对应的枚举对象；否则返回 ``None``。
         """
         try:
-            fileobj = BytesIO(tobytes(fileobj_or_data))
+            fileobj = io.BytesIO(tobytes(fileobj_or_data))
         except TypeError:
             fileobj = verify_fileobj(fileobj_or_data,
                                      'binary',
