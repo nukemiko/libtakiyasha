@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import random
 from functools import partial
+from secrets import randbelow as srandbelow
 
 try:
     import io
@@ -26,10 +26,7 @@ __all__ = [
     'RC4'
 ]
 
-# 为 TencentTEAWithModeCBC 的加密初始化随机数生成器
-random.seed()
-
-rand = partial(random.randint, 0, 255)
+rand = partial(srandbelow, 256)
 
 
 class StreamedAESWithModeECB(CipherSkel):
