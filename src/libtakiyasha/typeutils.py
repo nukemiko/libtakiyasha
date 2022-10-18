@@ -4,7 +4,7 @@ from __future__ import annotations
 from threading import RLock
 from typing import Any, Callable, IO, Literal, Type
 
-from ..typedefs import *
+from .typedefs import BytesLike, Cipher, IntegerLike, PT, RT, T
 
 __all__ = [
     'ClassInstanceProperty',

@@ -11,8 +11,8 @@ from .keyciphers import *
 from ..common import *
 from ..exceptions import *
 from ..typedefs import *
+from ..typeutils import is_filepath, tobytes, toint_nofloat, verify_fileobj
 from ..utils.keyutils import *
-from ..utils.typeutils import *
 
 
 @dataclass

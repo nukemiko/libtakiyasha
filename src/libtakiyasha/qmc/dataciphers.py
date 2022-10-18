@@ -7,8 +7,8 @@ from typing import Generator
 from .consts import KEY256_MAPPING
 from ..common import CipherSkel
 from ..typedefs import *
+from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
 from ..utils import *
-from ..utils.typeutils import *
 
 __all__ = [
     'Mask128',

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping
 
-from .typeutils import *
 from ..typedefs import *
+from ..typeutils import tobytes
 
 __all__ = ['bytestrxor', 'getattribute', 'verify_literally_match', 'select']
 
