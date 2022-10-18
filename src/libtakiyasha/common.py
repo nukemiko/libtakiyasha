@@ -1,179 +1,190 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from io import BytesIO, IOBase, UnsupportedOperation
-from typing import IO, Union
+try:
+    import io
+except ImportError:
+    import _pyio as io
 
-from . import utils
+from .typedefs import IntegerLike, BytesLike, Cipher
+from .typeutils import verify_cipher, ClassInstanceProperty, tobytes, toint_nofloat
 
-__all__ = ['Cipher', 'Ciphers', 'Crypter', 'KeylessCipher']
+__all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
 
 
-class KeylessCipher:
-    @staticmethod
-    def cipher_name() -> str:
-        """Cipher 实现的名字。"""
-        return 'No-op Keyless Cipher'
+class CipherSkel:
+    """为 Cipher 类提供的框架，本身没有任何实际功能。"""
 
-    @property
-    def support_offset(self) -> bool:
-        """指示 Cipher 实现是否可以根据源数据在文件中的位置，对源数据进行加/解密
-        （即 ``encrypt``/``decrypt`` 方法的 ``start_offset`` 参数是否会影响其行为）。
+    @ClassInstanceProperty
+    def offset_related(self) -> bool:
+        """此 Cipher 的加密/解密是否依赖于根据输入数据在文件中的具体位置。
 
-        如果返回 False，说明 Cipher 实现不支持此特性，``start_offset`` 参数将被忽略。"""
-        return True
-
-    @property
-    def support_decrypt(self) -> bool:
-        """指示 Cipher 实现是否支持解密。"""
-        return True
-
-    def decrypt(self, cipherdata: bytes, start_offset: int = 0) -> bytes:
-        bool(start_offset)
-        return bytes(cipherdata)
+        如果此属性为假值，那么 ``self.encrypt()`` 和 ``self.decrypt()``
+        的 ``offset`` 参数可能会被忽略。
+        """
+        raise NotImplementedError
 
     @property
-    def support_encrypt(self) -> bool:
-        """指示 Cipher 实现是否支持加密。"""
-        return True
+    def keys(self) -> list[str]:
+        """一个字典，包括所有用到的密钥在此 Cipher 中的属性名称。
 
-    def encrypt(self, plaindata: bytes, start_offset: int = 0) -> bytes:
-        return self.decrypt(cipherdata=plaindata, start_offset=start_offset)
+        可以用 ``getattr()`` 通过这里的名称获取到具体的密钥。
+        """
+        raise NotImplementedError
+
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        """加密 ``plaindata`` 并返回加密结果。
+
+        位置参数 ``offset`` 用于指定 ``plaindata`` 在文件中的位置，从而进行针对性的加密。
+
+        如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
+        """
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        """解密 ``cipherdata`` 并返回加密结果。
+
+        位置参数 ``offset`` 用于指定 ``cipherdata`` 在文件中的位置，从而进行针对性的解密。
+
+        如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
+        """
+        raise NotImplementedError
 
 
-class Cipher(KeylessCipher):
-    def __init__(self, key: bytes) -> None:
-        if not isinstance(key, bytes):
-            self._key = bytes(key)
-        else:
-            self._key = key
-
-    @staticmethod
-    def cipher_name() -> str:
-        return 'No-op Cipher'
-
-    @property
-    def key(self) -> bytes:
-        return self._key
-
-
-Ciphers = Union[KeylessCipher, Cipher]
-
-
-class Crypter(IOBase, IO[bytes]):
-    def __init__(self, filething: utils.FileThing | None = None, **kwargs) -> None:
-        if filething is None:
-            self._raw = BytesIO()
-            self._cipher: Ciphers = KeylessCipher()
-            self._name: str | None = None
-        else:
-            self.load(filething, **kwargs)
-
-    def load(self, filething: utils.FileThing, **kwargs) -> None:
-        if utils.is_filepath(filething):
-            fileobj: IO[bytes] = open(filething, 'rb')  # type: ignore
-            self._name: str | None = fileobj.name
-        else:
-            fileobj: IO[bytes] = filething  # type: ignore
-            self._name: str | None = getattr(fileobj, 'name', None)
-            utils.verify_fileobj_readable(fileobj, bytes)
-            utils.verify_fileobj_seekable(fileobj)
-
-        fileobj.seek(0, 0)
-        self._raw = BytesIO(fileobj.read())
-        if utils.is_filepath(filething):
-            fileobj.close()
-        self._cipher: Ciphers = KeylessCipher()
-
-    def save(self, filething: utils.FileThing | None = None, **kwargs) -> None:
-        if filething:
-            if utils.is_filepath(filething):
-                fileobj: IO[bytes] = open(filething, 'wb')  # type: ignore
-            else:
-                fileobj: IO[bytes] = filething  # type: ignore
-                utils.verify_fileobj_writable(fileobj, bytes)
-        elif self._name:
-            fileobj: IO[bytes] = open(self._name, 'wb')
-        else:
-            raise ValueError('missing filepath or fileobj')
-
-        self._raw.seek(0, 0)
-        fileobj.write(self._raw.read())
-        if utils.is_filepath(filething):
-            fileobj.close()
+class BytesIOWithTransparentCryptLayer(io.BytesIO):
+    """一个基于 BytesIO 的透明加密 IO 类实现，
+    所有的读写操作都将通过一个透明加密层进行。
+    """
 
     @property
-    def raw(self):
-        return self._raw
-
-    @property
-    def cipher(self) -> Ciphers:
+    def cipher(self):
+        """当前对象使用的 Cipher。"""
         return self._cipher
 
     @property
     def name(self) -> str | None:
-        return self._name
+        """一个文件路径，指向当前对象中的数据来源。
 
-    def close(self) -> None:
-        self._raw.close()
+        如果当前对象中的数据来自另一个文件对象，且这个文件对象的属性 ``name``
+        为 ``None`` 或不存在，那么访问此属性也会得到 ``None``。
+        """
+        return getattr(self, '_name', None)
 
     @property
-    def closed(self) -> bool:
-        return self._raw.closed
+    def master_key(self) -> bytes:
+        raise NotImplementedError
 
-    def flush(self) -> None:
-        self._raw.flush()
+    def __init__(self, cipher: Cipher, /, initial_data: BytesLike = b''):
+        """一个基于 BytesIO 的透明加密 IO 类实现，
+        所有的读写操作都将通过一个透明加密层进行。
 
-    def seekable(self) -> bool:
-        return self._raw.seekable() and self._cipher.support_offset
+        必须提供一个 Cipher 对象作为第一个位置参数。
 
-    def seek(self, offset: int, whence: int = 0, /) -> int:
-        if not self.seekable():
-            raise UnsupportedOperation('seek')
+        Args:
+            cipher: 加密/解密所需的 Cipher 对象
+            initial_data: 包含初始已加密数据的类字节对象
+        """
+        super(BytesIOWithTransparentCryptLayer, self).__init__(tobytes(initial_data))
 
-        return self._raw.seek(offset, whence)
+        self._cipher = verify_cipher(cipher)
 
-    def tell(self) -> int:
-        if not self.seekable():
-            raise UnsupportedOperation('tell')
+    def getvalue(self, nocryptlayer: bool = False) -> bytes:
+        """获取对象内部缓冲区里的所有数据。
 
-        return self._raw.tell()
-
-    def truncate(self, size: int | None = None, /) -> int:
-        if not self.seekable():
-            raise UnsupportedOperation('truncate')
-
-        return self._raw.truncate(size)
-
-    def readable(self) -> bool:
-        return self._raw.readable() and self._cipher.support_decrypt
-
-    def read(self, size: int = -1, /) -> bytes:
-        if not self.readable():
-            raise UnsupportedOperation('read')
-
-        curpos = self.tell() if self.seekable() else 0
-        return self._cipher.decrypt(self._raw.read(size), curpos)
-
-    def writable(self) -> bool:
-        return self._raw.writable() and self._cipher.support_encrypt
-
-    def write(self, data: bytes | bytearray, /) -> int:
-        if not self.writable():
-            raise UnsupportedOperation('write')
-
-        curpos = self.tell() if self.seekable() else 0
-        return self._raw.write(self._cipher.encrypt(data, curpos))
-
-    def __repr__(self) -> str:
-        self_cls_name: str = type(self).__name__
-        file_name: str | None = self._name
-        ret = f"<{self_cls_name}"
-        if self_cls_name != 'Crypter':
-            ret += ' file, '
-        if file_name is None:
-            ret += f'at {hex(id(self))}'
+        获取到的数据会在返回之前解密，但如果提供了参数
+        ``nocryptlayer=True``，则会返回原始的加密数据。"""
+        value = super(BytesIOWithTransparentCryptLayer, self).getvalue()
+        if nocryptlayer:
+            return value
         else:
-            ret += f'name={repr(file_name)}'
-        ret += '>'
+            return self._cipher.decrypt(value)
 
-        return ret
+    def getbuffer(self, nocryptlayer: bool = False) -> memoryview:
+        """获取与对象内部缓冲区相对应的可读写 memoryview。
+
+        此方法与其他方法不同：由于技术限制，无法为返回的 memoryview
+        添加透明加密层。因此，除非提供参数 ``nocryptlayer=True``，否则会触发
+        ``NotImplementedError``。
+        """
+        memview = super(BytesIOWithTransparentCryptLayer, self).getbuffer()
+        if nocryptlayer:
+            return memview
+        else:
+            raise NotImplementedError('memoryview with transparent crypt layer support '
+                                      'is not implemented'
+                                      )
+
+    def read(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        """读取、解密并返回最多 ``size`` 大小的数据。
+
+        如果位置参数 ``size`` 被忽略，或者为 ``None``、负数，
+        则从当前流的位置开始，读取、解密并返回到 EOF 的所有数据。
+
+        如果当前流的位置已经位于 EOF，或没有可用数据，则返回空字节。
+
+        如果提供参数 ``nocryptlayer=True``，将返回原始的加密数据。
+        """
+        if size is None:
+            size = -1
+        else:
+            size = toint_nofloat(size)
+        if nocryptlayer:
+            return super(BytesIOWithTransparentCryptLayer, self).read(size)
+        else:
+            curpos = self.tell()
+            return self._cipher.decrypt(
+                super(BytesIOWithTransparentCryptLayer, self).read(size), curpos
+            )
+
+    def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        """读取、解密并返回最多 ``size`` 大小的数据。
+
+        如果位置参数 ``size`` 被忽略，或者为 ``None``、负数，
+        则从当前流的位置开始，读取、解密并返回到 EOF 的所有数据。
+
+        如果当前流的位置已经位于 EOF，或没有可用数据，则返回空字节。
+
+        如果提供参数 ``nocryptlayer=True``，将返回原始的加密数据。
+        """
+        return self.read(size, nocryptlayer)
+
+    def write(self, data: BytesLike, /, nocryptlayer: bool = False) -> int:
+        """加密并写入数据。
+
+        如果提供参数 ``nocryptlayer=True``，将会跳过加密过程，直接写入数据。
+        如果错误使用此参数，缓冲区的数据可能会受到破坏。
+        """
+        data = tobytes(data)
+        if nocryptlayer:
+            return super(BytesIOWithTransparentCryptLayer, self).write(data)
+        else:
+            curpos = self.tell()
+            return super(BytesIOWithTransparentCryptLayer, self).write(
+                self._cipher.encrypt(data, curpos)
+            )
+
+    def seek(self, offset: IntegerLike, whence: IntegerLike = 0) -> int:
+        """改变流的位置，到相对于 ``whence`` 指示位置的字节偏移量 ``offset``：
+            - ``whence=0`` - 流的起点（默认值），``offset`` 应当大于等于 0
+            - ``whence=1`` - 当前流的位置，``offset`` 可能小于 0
+            - ``whence=2`` - 流的终点，``offset`` 通常都小于 0
+        之后返回新的绝对位置。
+        """
+        return super(BytesIOWithTransparentCryptLayer, self).seek(
+            toint_nofloat(offset), toint_nofloat(whence)
+        )
+
+    def truncate(self, size: IntegerLike | None = None, /) -> int:
+        """将流截断到最多 ``size`` 大小。
+
+        如果 ``size`` 被忽略或为 ``None``，默认为当前流的位置（可由 ``tell()`` 获得）。
+        当前流位置不变。
+
+        返回新的流大小。
+        """
+        if size is None:
+            size = self.tell()
+        else:
+            size = toint_nofloat(size)
+
+        return super(BytesIOWithTransparentCryptLayer, self).truncate(size)

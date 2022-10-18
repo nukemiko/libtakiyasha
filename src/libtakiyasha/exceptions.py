@@ -1,25 +1,22 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 
-class TakiyashaException(Exception):
+class LibTakiyashaException(Exception):
     pass
 
 
-class DecryptException(TakiyashaException):
+class CipherEncryptingError(LibTakiyashaException):
     pass
 
 
-class FileTypeMismatchError(TakiyashaException):
+class CipherDecryptingError(LibTakiyashaException):
     pass
 
 
-class UnsupportedFileType(TakiyashaException):
+class CrypterCreatingError(LibTakiyashaException):
     pass
 
 
-class InvalidDataError(DecryptException):
-    pass
-
-
-class ValidationError(DecryptException):
+class CrypterSavingError(LibTakiyashaException):
     pass

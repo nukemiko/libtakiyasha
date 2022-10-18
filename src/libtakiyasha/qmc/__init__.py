@@ -1,390 +1,657 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from io import BytesIO
-from typing import IO, Literal
+from base64 import b64decode, b64encode
+from binascii import Error as BinasciiError
+from dataclasses import dataclass
+from typing import IO, Literal, NamedTuple
 
-from .ciphers import keyutils
-from .ciphers.legacy import Key256Mask128, OldStaticMap
-from .ciphers.modern import DynamicMap, ModifiedRC4, StaticMap
-from .. import utils
-from ..common import Crypter
-from ..exceptions import FileTypeMismatchError, InvalidDataError, UnsupportedFileType
-
-__all__ = ['QMCv1', 'QMCv2']
-
-
-class QMCv1(Crypter):
-    """读写 QQ 音乐 QMCv1 格式的文件。
-
-    读取：
-
-    >>> qmcv1file = QMCv1('./test.qmcflac')
-    >>> data = qmcv1file.read()
-    >>>
-
-    写入：
-
-    >>> qmcv1file.write(b'Writted bytes')
-    >>>
-
-    创建、写入并保存：
-
-    >>> new_qmcv1file = QMCv1()
-    >>> with open('./source.flac', 'rb') as f:  # 写入未加密的文件数据
-    ...     new_qmcv1file.write(f.read())
-    >>> new_qmcv1file.save('./result.qmcflac')
-    >>>
-    """
-
-    @staticmethod
-    def file_headers() -> dict[bytes, str]:
-        return {
-            b'\xa5\x06\xb7\x89': 'QMCv1 FLAC',
-            b'\x8a\x0e\xe5'    : 'QMCv1 MP3',
-            b'<\xb8'           : 'QMCv1 MP3',
-            b'<\xb9'           : 'QMCv1 MP3',
-            b'<\xb1'           : 'QMCv1 MP3',
-            b'\x8c-\xb1\x99'   : 'QMCv1 OGG'
-        }
-
-    def __init__(self,
-                 filething: utils.FileThing | None = None,
-                 **kwargs
-                 ) -> None:
-        """读写 QQ 音乐 QMCv1 格式的文件。
-
-        Args:
-            filething (file): 源 QMCv1 文件的路径或文件对象；留空则视为创建一个空 QMCv1 文件
-        Keyword Args:
-            use_slower_cipher (bool): 使用更慢但更稳定的加/解密方式
-
-        所有未知的关键字参数都会被忽略。
-        """
-        if bool():
-            # 此分支中的代码永远都不会执行，这是为了避免 PyCharm 警告“缺少超类调用”
-            # 实际上并不需要调用 super().__init__()
-            super().__init__()
-
-        use_slower_cipher: bool = kwargs.get('use_slower_cipher', False)
-        if filething is None:
-            self._raw = BytesIO()
-            if use_slower_cipher:
-                self._cipher: StaticMap | OldStaticMap = OldStaticMap()
-            else:
-                self._cipher: StaticMap | OldStaticMap = StaticMap()
-            self._name: str | None = None
-        else:
-            self.load(filething, **kwargs)
-
-    def load(self,
-             filething: utils.FileThing,
-             **kwargs
-             ) -> None:
-        """将一个 QMCv1 文件加载到当前 QMCv1 对象中。
-
-        Args:
-            filething (file): 源 QMCv1 文件的路径或文件对象
-        Keyword Args:
-            use_slower_cipher (bool): 使用更慢但更稳定的加/解密方式
-        Raises:
-            FileTypeMismatchError: ``filething`` 不是一个 QMCv1 格式文件
-
-        所有未知的关键字参数都会被忽略。
-        """
-        use_slower_cipher: bool = kwargs.get('use_slower_cipher', False)
-
-        if utils.is_filepath(filething):
-            fileobj: IO[bytes] = open(filething, 'rb')  # type: ignore
-            self._name: str | None = fileobj.name
-        else:
-            fileobj: IO[bytes] = filething  # type: ignore
-            self._name: str | None = getattr(fileobj, 'name', None)
-            utils.verify_fileobj_readable(fileobj, bytes)
-            utils.verify_fileobj_seekable(fileobj)
-
-        self._raw = BytesIO(fileobj.read())
-        if utils.is_filepath(filething):
-            fileobj.close()
-
-        if use_slower_cipher:
-            self._cipher: StaticMap | OldStaticMap = OldStaticMap()
-        else:
-            self._cipher: StaticMap | OldStaticMap = StaticMap()
-
-    def save(self,
-             filething: utils.FileThing | None = None,
-             **kwargs
-             ) -> None:
-        """将当前 QMCv1 对象保存为一个 QMCv1 格式文件。
-
-        Args:
-            filething (file): 目标 QMCv1 文件的路径或文件对象；
-                留空则尝试使用 ``self.name``；如果两者都为空，抛出 ``ValueError``
-        Raises:
-            ValueError: 同时缺少参数 ``filething`` 和属性 ``self.name``
-
-        所有未知的关键字参数都会被忽略。
-        """
-        super().save(filething, **kwargs)
-
-    @property
-    def cipher(self) -> StaticMap | OldStaticMap:
-        return self._cipher
+from .dataciphers import HardenedRC4, Mask128
+from .keyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
+from ..common import BytesIOWithTransparentCryptLayer
+from ..exceptions import CrypterCreatingError, CrypterSavingError
+from ..keyutils import make_random_ascii_string, make_salt
+from ..typedefs import BytesLike, FilePath, IntegerLike
+from ..typeutils import is_filepath, tobytes, toint_nofloat, verify_fileobj
 
 
-class QMCv2(Crypter):
-    """读取 QQ 音乐 QMCv2 格式的文件。
-
-    读取：
-
-    >>> qmcv2file = QMCv2('./test.mflac')
-    >>> data = qmcv2file.read()
-    >>>
-    
-    读取没有可用密钥的 QMCv2 格式文件：
-    
-    >>> try:
-    ...     qmcv2file_nokey = QMCv2('./test_nokey.mflac')
-    ... except UnsupportedFileType:
-    ...     qmcv2file_nokey = QMCv2('./test_nokey.flac', try_fallback=True)
-    ...
-    >>>
-
-    写入：
-
-    >>> qmcv2file.write(b'Writted bytes')
-
-    创建空文件并写入：
-
-    >>> empty_qmcv2file = QMCv2()
-    >>> with open('source.flac', 'rb') as f:
-    ...     empty_qmcv2file.write(f.read())
-    >>>
-
-    保存为 QMCv2 文件：
-
-    >>> empty_qmcv2file.save('target.mflac')
-    >>> empty_qmcv2file.save('target.mflac0', use_qtag=True, songid=114514810)
-    >>>
-    """
-
-    @staticmethod
-    def unsupported_file_tailer() -> dict[bytes, str]:
-        return {
-            b'\x25\x02\x00\x00': 'QMCv2 with new key format',
-            b'STag'            : 'QMCv2 without key'
-        }
-
-    def __init__(self,
-                 filething: utils.FileThing | None = None,
-                 **kwargs
-                 ) -> None:
-        """读写 QQ 音乐 QMCv2 格式的文件。
-
-        部分 QMCv2 格式文件没有可用的密钥，可从它们末尾四个字节的十六进制值判断：
-
-        - ``25 02 00 00``：来自版本 18.57 及以上的 QQ 音乐 PC 客户端，密钥使用了新的加密方案
-        - ``53 54 61 67`` （``STag``）：来自版本 11.5.5 及以上的 QQ 音乐 Android 客户端，没有内置密钥
-
-        将会使用后备方案尝试打开这些文件，但并非总是有效。
-
-        Args:
-            filething (file): 指向源文件的路径或文件对象；留空则视为创建一个空的 QMCv2 文件
-        Keyword Args:
-            key (bytes): 加/解密数据所需的密钥；留空则会随机生成一个；
-                仅在 ``filething`` 为空时有效
-            cipher_type (str): 加密类型，仅在 ``filething`` 为空时有效；
-                支持：``dynamic_map``（默认值）、``rc4``
-        Raises:
-            ValueError: 为参数 ``cipher_type`` 指定了不支持的值
-
-        所有未知的关键字参数都会被忽略。
-        """
-        if bool():
-            # 此分支中的代码永远都不会执行，这是为了避免 PyCharm 警告“缺少超类调用”
-            # 实际上并不需要调用 super().__init__()
-            super().__init__()
-
-        key: bytes | None = kwargs.get('key')
-        cipher_type: Literal['dynamic_map', 'rc4'] = kwargs.get('cipher_type', 'dynamic_map')
-
-        if filething is None:
-            if cipher_type.lower() == 'dynamic_map':
-                if key is None:
-                    cipher_key = utils.gen_random_string(256).encode()
-                else:
-                    cipher_key = key
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = DynamicMap(cipher_key)
-            elif cipher_type.lower() == 'rc4':
-                if key is None:
-                    cipher_key = utils.gen_random_string(512).encode()
-                else:
-                    cipher_key = key
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = ModifiedRC4(cipher_key)
-            else:
-                raise ValueError(f"'cipher_type' must be str 'dynamic_map' or 'rc4'")
-            self._raw = BytesIO()
-            self._name = None
-            self._songid: int | None = None
-            self._qtag_unknown: bytes | None = None
-        else:
-            self.load(filething, **kwargs)
+@dataclass
+class QMCv2QTag:
+    master_key_encrypted_b64encoded: bytes
+    song_id: int
+    unknown_value1: bytes
 
     @classmethod
-    def get_qtag(cls, fileobj: IO[bytes]) -> tuple[int, bytes, int, bytes]:
-        fileobj.seek(-8, 2)
-        raw_qtag_len = int.from_bytes(fileobj.read(4), 'big')
+    def from_bytes(cls, bytestring: BytesLike) -> QMCv2QTag:
+        segments = tobytes(bytestring).split(b',')
+        if len(segments) != 3:
+            raise ValueError('invalid QMCv2 QTag data: the counts of splitted segments '
+                             f'should be equal to 3, got {len(segments)}'
+                             )
 
-        audio_len = fileobj.seek(-(raw_qtag_len + 8), 2)
-        raw_qtag = fileobj.read(raw_qtag_len)
+        master_key_encrypted_b64encoded = segments[0]
+        song_id = int(segments[1])
+        unknown_value1 = segments[2]
 
-        qtag: list[bytes] = raw_qtag.split(b',')
-        if len(qtag) != 3:
-            raise InvalidDataError('invalid QTag data')
+        return cls(master_key_encrypted_b64encoded, song_id, unknown_value1)
 
-        raw_key, songid, unknown = qtag
-
-        return audio_len, raw_key, int(songid), unknown
-
-    def load(self,
-             filething: utils.FileThing,
-             **kwargs
-             ) -> None:
-        """将一个 QMCv2 文件加载到当前 QMCv2 对象中。
-
-        在此过程中需要先找到文件中可用的密钥：
-
-        如果找到了可用的密钥，那么给 ``__init__()`` 传递的 ``key``
-        和 ``cipher_type`` 参数将会被探测到的密钥和加密算法类型取代。
-
-        部分 QMCv2 格式文件没有可用的密钥，可从它们末尾四个字节的十六进制值判断：
-
-        - ``25 02 00 00``：来自版本 18.57 及以上的 QQ 音乐 PC 客户端，密钥使用了新的加密方案
-        - ``53 54 61 67`` （``STag``）：来自版本 11.5.5 及以上的 QQ 音乐 Android 客户端，没有内置密钥
-
-        将会使用后备方案尝试打开这些文件，但并非总是有效。
-
-        Args:
-            filething (file): 源 QMCv2 文件的路径或文件对象
-        Raises:
-            FileTypeMismatchError: ``filething`` 不是一个 QMCv2 格式文件
-            UnsupportedFileType: ``filething`` 是一个 QMCv2 文件，但其格式不受支持
-
-        所有未知的关键字参数都会被忽略。
-        """
-        if utils.is_filepath(filething):
-            fileobj: IO[bytes] = open(filething, 'rb')  # type: ignore
-            self._name: str | None = fileobj.name
+    def to_bytes(self, with_tail: bool = False) -> bytes:
+        ret = b','.join([
+            self.master_key_encrypted_b64encoded,
+            str(self.song_id).encode('utf-8'),
+            self.unknown_value1
+        ]
+        )
+        if with_tail:
+            return ret + len(ret).to_bytes(4, 'big') + b'QTag'
         else:
-            fileobj: IO[bytes] = filething  # type: ignore
-            self._name: str | None = getattr(fileobj, 'name', None)
-            utils.verify_fileobj_readable(fileobj, bytes)
-            utils.verify_fileobj_seekable(fileobj)
+            return ret
 
-        fileobj.seek(-4, 2)
-        tail = fileobj.read(4)
-        if tail in self.unsupported_file_tailer():
-            if tail == b'\x25\x02\x00\x00':
-                audio_len = fileobj.seek(-(4 + int.from_bytes(tail, 'little')), 2)
-            else:
-                audio_len = fileobj.seek(-4, 2)
-            b64encoded_ciphered_keydata: bytes | None = keyutils.find_mflac_mask(fileobj) or keyutils.find_mgg_mask(fileobj)
-            songid = None
-            unknown = None
-            if not b64encoded_ciphered_keydata:
-                raise UnsupportedFileType(f'all attempt of decrypt failed, maybe this QMC version is unsupported: '
-                                          f'{self.unsupported_file_tailer()[tail]}'
-                                          )
-        elif tail == b'QTag':
-            audio_len, b64encoded_ciphered_keydata, songid, unknown = self.get_qtag(fileobj)
+    @classmethod
+    def new(cls, master_key: BytesLike, simple_key: BytesLike, song_id: IntegerLike, unknown_value1: BytesLike) -> QMCv2QTag:
+        master_key_encrypted = QMCv2KeyEncryptV1(simple_key).encrypt(master_key)
+        master_key_encrypted_b64encoded = b64encode(master_key_encrypted)
+
+        return cls(master_key_encrypted_b64encoded,
+                   toint_nofloat(song_id),
+                   tobytes(unknown_value1)
+                   )
+
+
+@dataclass
+class QMCv2STag:
+    song_id: int
+    unknown_value1: bytes
+    song_mid: str
+
+    @classmethod
+    def from_bytes(cls, bytestring: BytesLike) -> QMCv2STag:
+        segments = tobytes(bytestring).split(b',')
+        if len(segments) != 3:
+            raise ValueError('invalid QMCv2 STag data: the counts of splitted segments '
+                             f'should be equal to 3, got {len(segments)}'
+                             )
+
+        song_id = int(segments[0])
+        unknown_value1 = segments[1]
+        song_mid = segments[2].decode('utf-8')
+
+        return cls(song_id, unknown_value1, song_mid)
+
+    def to_bytes(self, with_tail: bool = False) -> bytes:
+        raw_song_id = str(self.song_id).encode('utf-8')
+        raw_song_mid = self.song_mid.encode('utf-8')
+
+        ret = b','.join([raw_song_id, self.unknown_value1, raw_song_mid])
+        if with_tail:
+            return ret + len(ret).to_bytes(4, 'big') + b'STag'
         else:
-            fileobj.seek(-4, 2)
-            raw_key_len = int.from_bytes(fileobj.read(4), 'little')
-            if 0 < raw_key_len <= 0x300:
-                audio_len = fileobj.seek(-(4 + raw_key_len), 2)
-                b64encoded_ciphered_keydata = fileobj.read(raw_key_len)
-                songid = None
-                unknown = None
-            else:
-                raise FileTypeMismatchError('not a QMCv2 file: unknown file tail or key not found')
+            return ret
 
-        if tail in self.unsupported_file_tailer():
-            self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = Key256Mask128(b64encoded_ciphered_keydata)
-        else:
-            key = keyutils.QMCv2_key_decrypt(b64encoded_ciphered_keydata)
-            if 0 < len(key) < 300:
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = DynamicMap(key)
-            else:
-                self._cipher: DynamicMap | ModifiedRC4 | Key256Mask128 = ModifiedRC4(key)
+    @classmethod
+    def new(cls, song_id: IntegerLike, unknown_value1: BytesLike, song_mid: str) -> QMCv2STag:
+        return cls(toint_nofloat(song_id), tobytes(unknown_value1), str(song_mid))
 
-        fileobj.seek(0, 0)
-        self._raw = BytesIO(fileobj.read(audio_len))
 
-        self._songid = songid
-        self._qtag_unknown = unknown
-
-    def save(self,
-             filething: utils.FileThing | None = None,
-             **kwargs
-             ) -> None:
-        """将当前 QMCv2 对象保存为一个 QMCv2 格式文件。
-
-        Args:
-            filething (file): 目标 QMCv2 文件的路径或文件对象；
-                留空则尝试使用 ``self.name``；如果两者都为空，抛出 ``ValueError``
-        Keyword Args:
-            use_qtag (bool): 是否在输出的 QMCv2 文件中写入 QTag，默认为 False
-            songid (int): QTag 中的歌曲 ID，可以留空；仅在 ``use_qtag=True`` 时有效
-        Raises:
-            ValueError: 同时缺少参数 ``filething`` 和属性 ``self.name``
-
-        所有未知的关键字参数都会被忽略。
-        """
-        use_qtag: bool = kwargs.get('use_qtag', False)
-
-        encoded_encrypted_keydata = keyutils.QMCv2_key_encrypt(self._cipher.key)
-
-        if use_qtag:
-            songid: int | None = kwargs.get('songid', self._songid)
-            if songid is None:
-                songid = 0
-            qtag_unknown_value = 2 if self._qtag_unknown is None else self._qtag_unknown
-            qtag = b','.join([
-                encoded_encrypted_keydata,
-                str(songid).encode(),
-                str(qtag_unknown_value).encode()]
-            )
-            qtag_size = len(qtag).to_bytes(4, 'big')
-            additionals = qtag + qtag_size + b'QTag'
-        else:
-            encoded_encrypted_keydata_size = len(encoded_encrypted_keydata).to_bytes(4, 'little')
-            additionals = encoded_encrypted_keydata + encoded_encrypted_keydata_size
-
-        if filething:
-            if utils.is_filepath(filething):
-                fileobj: IO[bytes] = open(filething, 'wb')  # type: ignore
-            else:
-                fileobj: IO[bytes] = filething  # type: ignore
-                utils.verify_fileobj_writable(fileobj, bytes)
-        elif self._name:
-            fileobj: IO[bytes] = open(self._name, 'wb')
-        else:
-            raise ValueError('missing filepath or fileobj')
-
-        self._raw.seek(0, 0)
-        fileobj.write(self._raw.read())
-        fileobj.write(additionals)
-        if utils.is_filepath(filething):
-            fileobj.close()
+class QMCv1(BytesIOWithTransparentCryptLayer):
+    """QMCv1 格式文件的读取和创建支持。"""
 
     @property
-    def cipher(self) -> DynamicMap | ModifiedRC4 | Key256Mask128:
+    def cipher(self) -> Mask128:
         return self._cipher
 
-    @property
-    def songid(self) -> int | None:
-        return self._songid
+    @classmethod
+    def new(cls) -> QMCv1:
+        """返回一个全新的空 QMCv1 对象。"""
+        master_key = make_salt(128)
+
+        return cls(Mask128(master_key))
+
+    @staticmethod
+    def _make_cipher_by_mask_len(mask: bytes) -> Mask128:
+        mask_len = len(mask)
+        if mask_len == 44:
+            return Mask128.from_qmcv1_mask44(mask)
+        elif mask_len == 128:
+            return Mask128(mask)
+        elif mask_len == 256:
+            return Mask128.from_qmcv1_mask256(mask)
+        else:
+            raise ValueError(f'invalid mask length: should be 44, 128 or 256, got {mask_len}')
+
+    @classmethod
+    def from_file(cls,
+                  filething: FilePath | IO[bytes], /,
+                  mask: BytesLike,
+                  ) -> QMCv1:
+        """打开一个 QMCv1 文件或文件对象 ``filething``。
+
+        第一个位置参数 ``filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``filething``
+        也可以是一个文件对象，但必须可读。
+
+        第二个位置参数 ``mask`` 用于解密音频数据，长度仅限 44、128 或 256 位。
+        如果不符合长度要求，会触发 ``ValueError``。
+        """
+        mask = tobytes(mask)
+        cipher = cls._make_cipher_by_mask_len(mask)
+
+        if is_filepath(filething):
+            with open(filething, mode='rb') as fileobj:
+                initial_data = fileobj.read()
+                filename: str = fileobj.name
+        else:
+            fileobj = verify_fileobj(filething,
+                                     'binary',
+                                     verify_readable=True
+                                     )
+            initial_data = fileobj.read()
+            filename: str | None = getattr(fileobj, 'name', None)
+
+        instance = cls(cipher, initial_data)
+        instance._name = filename
+
+        return instance
+
+    def to_file(self, filething: FilePath | IO[bytes] = None, /) -> None:
+        """将当前 QMCv1 对象的内容保存到文件 ``filething``。
+
+        第一个位置参数 ``filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``filething``
+        也可以是一个文件对象，但必须可读。
+
+        如果 ``filething`` 留空，将会使用 ``self.name``
+        作为目标文件的路径。如果也无法从 ``self.name``
+        获取到目标文件路径，则会触发 ``CrypterSavingError``。
+        """
+        if filething is None:
+            if self.name is None:
+                raise CrypterSavingError("cannot get path of target file: "
+                                         "attribute 'self.name' and argument 'filething' "
+                                         "are missing"
+                                         )
+            else:
+                filething = self.name
+
+        if is_filepath(filething):
+            with open(filething, mode='wb') as fileobj:
+                fileobj.write(self.getvalue(nocryptlayer=True))
+        else:
+            fileobj = verify_fileobj(filething,
+                                     'binary',
+                                     verify_writable=True
+                                     )
+            fileobj.write(self.getvalue(nocryptlayer=True))
+
+    def __init__(self, cipher: Mask128, /, initial_data: BytesLike = b'') -> None:
+        super().__init__(cipher, initial_data)
+        if not isinstance(cipher, Mask128):
+            raise TypeError(f"unsupported Cipher: supports {Mask128.__name__}, "
+                            f"got {type(cipher).__name__}"
+                            )
+        self._name = None
 
     @property
-    def qtag_unknown_value(self) -> bytes | None:
-        return self._qtag_unknown
+    def master_key(self) -> bytes:
+        return self.cipher.mask128
+
+
+class QMCv2(BytesIOWithTransparentCryptLayer):
+    """QMCv2 格式文件的读写和创建支持。"""
+
+    @property
+    def cipher(self) -> Mask128 | HardenedRC4:
+        return self._cipher
+
+    @classmethod
+    def new(cls, subtype: Literal['mask', 'rc4'], /) -> QMCv2:
+        """返回一个全新的空 QMCv2 对象。
+
+        第一个位置参数 ``subtype`` 用于决定使用哪一个音频加密算法，仅支持
+        ``mask`` 和 ``rc4``；使用其他值会触发 ``ValueError`` 或 ``TypeError``。
+        """
+        if str(subtype) == 'mask':
+            master_key = make_random_ascii_string(256)
+            cipher_maker = Mask128.from_qmcv2_key256
+        elif str(subtype) == 'rc4':
+            master_key = make_random_ascii_string(512)
+            cipher_maker = HardenedRC4
+        elif isinstance(subtype, str):
+            raise ValueError("positional argument 'subtype' must be 'mask' or 'rc4', "
+                             f"not '{subtype}'"
+                             )
+        else:
+            raise TypeError(f"positional argument 'subtype' must be str, not {type(subtype).__name__}")
+
+        return cls(cipher_maker(master_key))
+
+    @classmethod
+    def from_file(cls,
+                  filething: FilePath | IO[bytes], /,
+                  simple_key: BytesLike = None,
+                  mix_key1: BytesLike = None,
+                  mix_key2: BytesLike = None, *,
+                  master_key: BytesLike = None,
+                  ) -> QMCv2:
+        """打开一个 QMCv2 文件或文件对象 ``filething``。
+
+        第一个位置参数 ``filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``filething``
+        也可以是一个文件对象，但必须可读。
+
+        本方法会查找文件中内嵌的已加密主密钥，并判断主密钥的加密方式。
+
+        第二个参数 ``simple_key`` 用于解密在文件中找到的主密钥。
+        如果主密钥加密方式为 V1，此参数是必选的；
+        如果主密钥加密方式为 V2，则第三、第四个位置参数
+        ``mix_key1`` 和 ``mix_key2`` 也是必选的。
+
+        关键字参数 ``master_key`` 是可选的。一旦提供，则将其视为用户提供的主密钥，
+        其他参数（``simple_key``、``mix_key1`` 和 ``mix_key2``）都会被忽略。
+        例外：在未能找到内嵌的已加密主密钥时，此参数是必选的。
+        """
+        if master_key is not None:
+            master_key = tobytes(master_key)
+        if simple_key is not None:
+            simple_key = tobytes(simple_key)
+        if mix_key1 is not None:
+            mix_key1 = tobytes(mix_key1)
+        if mix_key2 is not None:
+            mix_key2 = tobytes(mix_key2)
+
+        if is_filepath(filething):
+            with open(filething, mode='rb') as fileobj:
+                instance = _extract_qmcv2_file(fileobj, simple_key, mix_key1, mix_key2, master_key)
+        else:
+            fileobj = verify_fileobj(filething,
+                                     'binary',
+                                     verify_readable=True,
+                                     verify_seekable=True
+                                     )
+            instance = _extract_qmcv2_file(fileobj, simple_key, mix_key1, mix_key2, master_key)
+
+        instance._name = getattr(fileobj, 'name', None)
+
+        return instance
+
+    def to_file(self,
+                filething: FilePath | IO[bytes] = None, /,
+                tag_type: Literal['qtag', 'stag'] = None,
+                simple_key: BytesLike = None,
+                master_key_enc_ver: IntegerLike = 1,
+                mix_key1: BytesLike = None,
+                mix_key2: BytesLike = None
+                ) -> None:
+        """将当前 QMCv2 对象保存到文件 ``filething``。
+        此过程会向 ``filething`` 写入 QMCv2 文件结构。
+
+        第一个位置参数 ``filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        属性的路径对象。``filething`` 也可以是文件对象，该对象必须可写和可跳转
+        （``filething.seekable() == True``）。
+
+        如果提供了 ``filething``，本方法将会把数据写入 ``filething``
+        指向的文件。否则，本方法以写入模式打开一个指向 ``self.name``
+        的文件对象，将数据写入此文件对象。如果两者都为空或未提供，则会触发
+        ``ValueError``。
+
+        第二个参数 ``tag_type`` 决定文件末尾附加的内容，支持以下值：
+
+        - ``None`` - 只附加加密后的主密钥；``master_key_enc_ver`` 可以为 1 或 2
+        - ``qtag`` - 附加 QTag；``master_key_enc_ver`` 只能为 1，否则会触发 ``CrypterSavingError``
+        - ``stag`` - 附加 STag；因为 STag 不含密钥，除了 ``filething`` 之外，所有参数都会被忽略
+
+        第三个参数 ``simple_key`` 是可选的。
+        如果提供此参数，本方法会使用它来加密主密钥；否则，使用
+        ``self.simple_key`` 代替。如果两者都为 ``None`` 或未提供，触发 ``ValueError``。
+
+        第四个参数 ``master_key_enc_ver`` 是可选的，决定主密钥加密的方式；
+        仅支持 1 和 2 两个值，默认为 1。
+
+        第五、第六个参数 ``mix_key1`` 和 ``mix_key2``，在第三个参数
+        ``master_key_enc_ver=2`` 时，如果提供这些参数，本方法会在使用 ``simple_key``
+        加密主密钥后，使用它们再次加密；任何一个未提供，则使用对象自身存储的同名属性
+        ``self.mix_key1`` 或 ``self.mix_key2`` 代替。
+        如果任何一个相关参数和属性都为 ``None`` 或未提供，触发 ``ValueError``。
+        """
+        if tag_type != 'stag':
+            if simple_key is None:
+                if self.simple_key is None:
+                    raise ValueError("cannot get simple key for master key encryption: "
+                                     "argument 'simple_key' and attribute 'self.simple_key' "
+                                     "are missing"
+                                     )
+                simple_key = self.simple_key
+            else:
+                simple_key = tobytes(simple_key)
+
+        master_key_enc_ver = toint_nofloat(master_key_enc_ver)
+        if tag_type == 'qtag':
+            if master_key_enc_ver != 1:
+                raise CrypterSavingError('QTag is only compatible with master key encryption V1, '
+                                         f'got V{master_key_enc_ver}'
+                                         )
+            payload = QMCv2QTag.new(
+                master_key=self.master_key,
+                simple_key=simple_key,
+                song_id=self.song_id,
+                unknown_value1=self.qmcv2tag_unknown_value1
+            ).to_bytes(with_tail=True)
+        elif tag_type == 'stag':
+            payload = self.stag.to_bytes(with_tail=True)
+        elif tag_type is None:
+            if master_key_enc_ver == 1:
+                master_key_encrypted_b64encoded = b64encode(
+                    QMCv2KeyEncryptV1(simple_key).encrypt(self.master_key)
+                )
+            elif master_key_enc_ver == 2:
+                missing_mix_keys = []
+                if mix_key1 is None:
+                    if self.mix_key1 is None:
+                        missing_mix_keys.append('mix_key1')
+                    mix_key1 = self.mix_key1
+                else:
+                    mix_key1 = tobytes(mix_key1)
+                if mix_key2 is None:
+                    if self.mix_key2 is None:
+                        missing_mix_keys.append('mix_key2')
+                    mix_key2 = self.mix_key2
+                else:
+                    mix_key2 = tobytes(mix_key2)
+                if missing_mix_keys:
+                    missing_mix_keys_msg = ', '.join([f"'{_}'" for _ in missing_mix_keys])
+                    raise ValueError("unable to continue the master key encryption: "
+                                     f"argument {missing_mix_keys_msg} and attribute {missing_mix_keys_msg} "
+                                     f"are missing"
+                                     )
+                master_key_encrypted_b64encoded = b64encode(
+                    b'QQMusic EncV2,Key:' + QMCv2KeyEncryptV2(simple_key,
+                                                              mix_key1,
+                                                              mix_key2
+                                                              ).encrypt(self.master_key)
+                )
+            else:
+                raise ValueError('unsupported QMCv2 master key encryption version: '
+                                 f'supports V1 and V2, got V{master_key_enc_ver}'
+                                 )
+            payload = master_key_encrypted_b64encoded + len(
+                master_key_encrypted_b64encoded
+            ).to_bytes(4, 'little')
+        elif isinstance(tag_type, str):
+            raise ValueError(f"argument 'tag_type' must be 'qtag', 'stag' or None, not {tag_type}")
+        else:
+            raise TypeError(f"argument 'tag_type' must be str or None, not {type(tag_type).__name__}")
+
+        if is_filepath(filething):
+            with open(filething, mode='wb') as fileobj:
+                fileobj.write(self.getvalue(nocryptlayer=True))
+                fileobj.write(payload)
+        else:
+            fileobj = verify_fileobj(filething,
+                                     'binary',
+                                     verify_writable=True
+                                     )
+            fileobj.write(self.getvalue(nocryptlayer=True))
+            fileobj.write(payload)
+
+    def __init__(self,
+                 cipher: Mask128, /,
+                 initial_data: BytesLike = b'',
+                 simple_key: BytesLike = None, *,
+                 mix_key1: BytesLike = None,
+                 mix_key2: BytesLike = None,
+                 qmcv2tag: QMCv2QTag | QMCv2STag = None
+                 ) -> None:
+        super().__init__(cipher, initial_data)
+        if not isinstance(cipher, (Mask128, HardenedRC4)):
+            raise TypeError(f'unsupported Cipher: '
+                            f'supports {Mask128.__name__} and {HardenedRC4.__name__}, '
+                            f'got {type(cipher).__name__}'
+                            )
+        if simple_key is None:
+            self._simple_key = None
+        else:
+            self._simple_key = tobytes(simple_key)
+        if mix_key1 is None:
+            self._mix_key1 = None
+        else:
+            self._mix_key1 = tobytes(mix_key1)
+        if mix_key2 is None:
+            self._mix_key2 = None
+        else:
+            self._mix_key2 = tobytes(mix_key2)
+        if isinstance(qmcv2tag, QMCv2QTag):
+            self._song_id = qmcv2tag.song_id
+            self._unknown_value1 = qmcv2tag.unknown_value1
+            self._song_mid = '0' * 14
+        elif isinstance(qmcv2tag, QMCv2STag):
+            self._song_id = qmcv2tag.song_id
+            self._song_mid = qmcv2tag.song_mid
+            self._unknown_value1 = qmcv2tag.unknown_value1
+        elif qmcv2tag is None:
+            self._song_id, self._song_mid, self._unknown_value1 = 0, '0' * 14, b'2'
+        else:
+            raise TypeError("argument 'qmcv2tag' must be QMCv2QTag, QMCv2STag or None, "
+                            f"not {type(qmcv2tag).__name__}"
+                            )
+        self._name = None
+
+    @property
+    def master_key(self) -> bytes:
+        if isinstance(self.cipher, Mask128):
+            return self.cipher.original_mask_or_key
+        elif isinstance(self.cipher, HardenedRC4):
+            return self.cipher.key512
+        else:
+            raise TypeError(f"unsupported Cipher: "
+                            f"supports {Mask128.__name__} and {HardenedRC4.__name__}, "
+                            f"got {type(self.cipher).__name__}"
+                            )
+
+    @property
+    def simple_key(self) -> bytes | None:
+        return self._simple_key
+
+    @simple_key.setter
+    def simple_key(self, value: BytesLike) -> None:
+        self._simple_key = tobytes(value)
+
+    @simple_key.deleter
+    def simple_key(self) -> None:
+        self._simple_key = None
+
+    @property
+    def mix_key1(self) -> bytes | None:
+        return self._mix_key1
+
+    @mix_key1.setter
+    def mix_key1(self, value: BytesLike) -> None:
+        self._mix_key1 = tobytes(value)
+
+    @mix_key1.deleter
+    def mix_key1(self) -> None:
+        self._mix_key1 = None
+
+    @property
+    def mix_key2(self) -> bytes | None:
+        return self._mix_key2
+
+    @mix_key2.setter
+    def mix_key2(self, value: BytesLike) -> None:
+        self._mix_key2 = tobytes(value)
+
+    @mix_key2.deleter
+    def mix_key2(self) -> None:
+        self._mix_key2 = None
+
+    @property
+    def song_id(self) -> int:
+        return self._song_id
+
+    @song_id.setter
+    def song_id(self, value: IntegerLike) -> None:
+        self._song_id = toint_nofloat(value)
+
+    @song_id.deleter
+    def song_id(self) -> None:
+        self._song_id = 0
+
+    @property
+    def song_mid(self) -> str:
+        return self._song_mid
+
+    @song_mid.setter
+    def song_mid(self, value: str) -> None:
+        self._song_mid = str(value)
+
+    @song_mid.deleter
+    def song_mid(self) -> None:
+        self._song_mid = '0' * 14
+
+    @property
+    def qmcv2tag_unknown_value1(self) -> bytes:
+        return self._unknown_value1
+
+    @qmcv2tag_unknown_value1.setter
+    def qmcv2tag_unknown_value1(self, value: BytesLike) -> None:
+        self._unknown_value1 = tobytes(value)
+
+    @qmcv2tag_unknown_value1.deleter
+    def qmcv2tag_unknown_value1(self) -> None:
+        self._unknown_value1 = b''
+
+    @property
+    def qtag(self) -> QMCv2QTag:
+        if self.simple_key is None:
+            raise AttributeError("attribute 'simple_key' is not set")
+        else:
+            simple_key = self.simple_key
+        master_key = self.master_key
+        song_id = self.song_id
+        unknown_value1 = self.qmcv2tag_unknown_value1
+
+        return QMCv2QTag.new(master_key, simple_key, song_id, unknown_value1)
+
+    @property
+    def stag(self) -> QMCv2STag:
+        song_id = self.song_id
+        unknown_value1 = self.qmcv2tag_unknown_value1
+        song_mid = self.song_mid
+        return QMCv2STag.new(song_id, unknown_value1, song_mid)
+
+
+class QMCv2FileProbeResult(NamedTuple):
+    audio_encrypted_len: int
+    master_key_encrypted: bytes | None
+    master_key_encrypt_ver: int | None
+    qmcv2tag: QMCv2QTag | QMCv2STag | None
+
+
+def _probe_qmcv2_file(fileobj: IO[bytes]) -> tuple[int, QMCv2FileProbeResult]:
+    fileobj_endpos = fileobj.seek(0, 2)
+    fileobj.seek(-4, 2)
+    tail_4bytes = fileobj.read(4)
+    if tail_4bytes == b'QTag':
+        fileobj.seek(-8, 2)
+        tag_bytestring_len = int.from_bytes(fileobj.read(4), 'big')
+        if tag_bytestring_len > fileobj_endpos:
+            raise CrypterCreatingError(f'{repr(fileobj)} is not a valid QMCv2 file: '
+                                       f'QTag length ({tag_bytestring_len}) '
+                                       f'is greater than file length ({fileobj_endpos})'
+                                       )
+        audio_encrypted_len = fileobj.seek(-(tag_bytestring_len + 8), 2)
+        qmcv2tag = QMCv2QTag.from_bytes(fileobj.read(tag_bytestring_len))
+        master_key_encrypted = b64decode(qmcv2tag.master_key_encrypted_b64encoded, validate=True)
+        master_key_encrypt_ver = 1
+    elif tail_4bytes == b'STag':
+        fileobj.seek(-8, 2)
+        tag_bytestring_len = int.from_bytes(fileobj.read(4), 'big')
+        if tag_bytestring_len > fileobj_endpos:
+            raise CrypterCreatingError(f'{repr(fileobj)} is not a valid QMCv2 file: '
+                                       f'STag length ({tag_bytestring_len}) '
+                                       f'is greater than file length ({fileobj_endpos})'
+                                       )
+        audio_encrypted_len = fileobj.seek(-(tag_bytestring_len + 8), 2)
+        qmcv2tag = QMCv2STag.from_bytes(fileobj.read(tag_bytestring_len))
+        master_key_encrypted = None
+        master_key_encrypt_ver = None
+    else:
+        master_key_encrypted_b64encoded_len = int.from_bytes(tail_4bytes, 'little')
+        if master_key_encrypted_b64encoded_len > fileobj_endpos:
+            raise CrypterCreatingError(f'{repr(fileobj)} is not a valid QMCv2 file: '
+                                       f'master key length ({master_key_encrypted_b64encoded_len}) '
+                                       f'is greater than file length ({fileobj_endpos})'
+                                       )
+        audio_encrypted_len = fileobj.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
+        master_key_encrypted_b64encoded = fileobj.read(master_key_encrypted_b64encoded_len)
+        try:
+            master_key_encrypted = b64decode(master_key_encrypted_b64encoded, validate=True)
+        except BinasciiError:
+            suspect_master_key_encrypted = b64decode(master_key_encrypted_b64encoded, validate=False)
+            if suspect_master_key_encrypted.startswith(b'QQMusic EncV2,Key:'):
+                master_key_encrypted = suspect_master_key_encrypted[18:]
+                master_key_encrypt_ver = 2
+            else:
+                raise CrypterCreatingError(f'{repr(fileobj)} is not a valid QMCv2 file: '
+                                           f'QMCv2 without STag should not missing master key'
+                                           )
+        else:
+            master_key_encrypt_ver = 1
+        qmcv2tag = None
+
+    return fileobj.tell(), QMCv2FileProbeResult(audio_encrypted_len,
+                                                master_key_encrypted,
+                                                master_key_encrypt_ver,
+                                                qmcv2tag
+                                                )
+
+
+def _make_cipher(probe_result: QMCv2FileProbeResult | bytes,
+                 simple_key: bytes = None,
+                 mix_key1: bytes = None,
+                 mix_key2: bytes = None,
+                 master_key: bytes = None
+                 ) -> Mask128 | HardenedRC4:
+    if master_key is None:
+        master_key_encrypted = probe_result.master_key_encrypted
+        if isinstance(probe_result.qmcv2tag, QMCv2STag):
+            raise ValueError('master key is required for QMCv2 with STag')
+        else:
+            if simple_key is None:
+                raise ValueError("argument 'simple_key' is required "
+                                 "to decrypt QMCv2 master key encryption V1 or V2"
+                                 )
+            if probe_result.master_key_encrypt_ver == 1:
+                master_key = QMCv2KeyEncryptV1(simple_key).decrypt(master_key_encrypted)
+            elif probe_result.master_key_encrypt_ver == 2:
+                if mix_key1 is None or mix_key2 is None:
+                    raise ValueError("argument 'mix_key1' and 'mix_key2' is required "
+                                     "to decrypt QMCv2 master key encryption V2"
+                                     )
+                master_key = QMCv2KeyEncryptV2(simple_key, mix_key1, mix_key2).decrypt(master_key_encrypted)
+            else:
+                raise CrypterCreatingError(f'unsupported master key encryption version: '
+                                           f'supports 1 and 2, got {probe_result.master_key_encrypt_ver}'
+                                           )
+
+    if len(master_key) < 300:
+        cipher = Mask128.from_qmcv2_key256(master_key)
+    else:
+        cipher = HardenedRC4(master_key)
+
+    return cipher
+
+
+def _extract_qmcv2_file(fileobj: IO[bytes],
+                        simple_key: bytes = None,
+                        mix_key1: bytes = None,
+                        mix_key2: bytes = None,
+                        master_key: bytes = None
+                        ) -> QMCv2:
+    offset, probe_result = _probe_qmcv2_file(fileobj)
+    cipher = _make_cipher(probe_result, simple_key, mix_key1, mix_key2, master_key)
+
+    fileobj.seek(0, 0)
+    initial_data = fileobj.read(probe_result.audio_encrypted_len)
+    qmcv2tag = probe_result.qmcv2tag
+
+    return QMCv2(cipher, initial_data, simple_key, mix_key1=mix_key1, mix_key2=mix_key2, qmcv2tag=qmcv2tag)
