@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from io import BytesIO
+try:
+    import io
+except ImportError:
+    import _pyio as io
 
 __all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
 
 from .typedefs import *
 from .utils.typeutils import *
+
+__all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
 
 
 class CipherSkel:
@@ -48,7 +53,7 @@ class CipherSkel:
         raise NotImplementedError
 
 
-class BytesIOWithTransparentCryptLayer(BytesIO):
+class BytesIOWithTransparentCryptLayer(io.BytesIO):
     """一个基于 BytesIO 的透明加密 IO 类实现，
     所有的读写操作都将通过一个透明加密层进行。
     """

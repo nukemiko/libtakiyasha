@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import random
 from functools import partial
-from io import BytesIO
+
+try:
+    import io
+except ImportError:
+    import _pyio as io
 from typing import Generator
 
 from pyaes import AESModeOfOperationECB
@@ -48,7 +52,7 @@ class StreamedAESWithModeECB(CipherSkel):
         self._raw_cipher = AESModeOfOperationECB(key=self.masterkey)
 
     def yield_block(self, data: BytesLike) -> Generator[bytes, None, None]:
-        for blk in iter(partial(BytesIO(tobytes(data)).read, self.blocksize), b''):
+        for blk in iter(partial(io.BytesIO(tobytes(data)).read, self.blocksize), b''):
             yield blk
 
     @CachedClassInstanceProperty
