@@ -11,7 +11,7 @@ except ImportError:
 from typing import IO
 
 from .typedefs import *
-from .utils.typeutils import *
+from .typeutils import tobytes, verify_fileobj
 
 __all__ = ['CommonAudioHeadersInRegexPattern']
 

@@ -9,7 +9,7 @@ from ..common import CipherSkel
 from ..exceptions import CipherDecryptingError, CipherEncryptingError
 from ..stdciphers import TencentTEAWithModeCBC
 from ..typedefs import *
-from ..utils.typeutils import *
+from ..typeutils import tobytes
 from ..warns import CipherDecryptingWarning, CipherEncryptingWarning
 
 __all__ = [

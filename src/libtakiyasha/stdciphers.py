@@ -17,7 +17,7 @@ from .common import CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import *
 from .utils import *
-from .utils.typeutils import *
+from .typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 
 __all__ = [
     'StreamedAESWithModeECB',

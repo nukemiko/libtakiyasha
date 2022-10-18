@@ -7,7 +7,7 @@ except ImportError:
     import _pyio as io
 
 from .typedefs import *
-from .utils.typeutils import *
+from .typeutils import verify_cipher, ClassInstanceProperty, tobytes, toint_nofloat
 
 __all__ = ['CipherSkel', 'BytesIOWithTransparentCryptLayer']
 
