@@ -11,10 +11,10 @@ from .common import *
 from .exceptions import CrypterCreatingError
 from .formatprober import *
 from .keyutils import make_random_ascii_string, make_random_number_string
+from .miscutils import *
 from .stdciphers import RC4, StreamedAESWithModeECB
 from .typedefs import *
 from .typeutils import is_filepath, tobytes, verify_fileobj
-from .utils import *
 from .warns import CrypterCreatingWarning
 
 __all__ = ['NcmMusicIdentityTag', 'NCM']

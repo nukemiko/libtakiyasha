@@ -6,9 +6,9 @@ from typing import Generator
 
 from .consts import KEY256_MAPPING
 from ..common import CipherSkel
+from ..miscutils import *
 from ..typedefs import *
 from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
-from ..utils import *
 
 __all__ = [
     'Mask128',
