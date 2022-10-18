@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping
 
-from .typedefs import *
+from .typedefs import BytesLike, KT, T, VT
 from .typeutils import tobytes
 
 __all__ = ['bytestrxor', 'getattribute', 'verify_literally_match', 'select']

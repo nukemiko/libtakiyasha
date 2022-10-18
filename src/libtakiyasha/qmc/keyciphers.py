@@ -8,7 +8,7 @@ from math import tan
 from ..common import CipherSkel
 from ..exceptions import CipherDecryptingError, CipherEncryptingError
 from ..stdciphers import TencentTEAWithModeCBC
-from ..typedefs import *
+from ..typedefs import BytesLike
 from ..typeutils import tobytes
 from ..warns import CipherDecryptingWarning, CipherEncryptingWarning
 

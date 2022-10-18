@@ -6,8 +6,8 @@ from typing import Generator
 
 from .consts import KEY256_MAPPING
 from ..common import CipherSkel
-from ..miscutils import *
-from ..typedefs import *
+from ..miscutils import bytestrxor
+from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
 
 __all__ = [
