@@ -14,54 +14,53 @@ except ImportError:
     import _pyio as io
 
 from .typedefs import IntegerLike, BytesLike, Cipher, WritableBuffer
-from .typeutils import verify_cipher, ClassInstanceProperty, tobytes, toint_nofloat
+from .typeutils import verify_cipher, tobytes, toint_nofloat
 
 __all__ = [
-    'CipherSkel',
     'BytesIOWithTransparentCryptLayer',
-    'NewCipherSkel',
+    'CipherSkel',
     'StreamCipherSkel',
     'CryptLayerWrappedIOSkel'
 ]
 
 
-class CipherSkel:
-    """为 Cipher 类提供的框架，本身没有任何实际功能。"""
-
-    @ClassInstanceProperty
-    def offset_related(self) -> bool:
-        """此 Cipher 的加密/解密是否依赖于根据输入数据在文件中的具体位置。
-
-        如果此属性为假值，那么 ``self.encrypt()`` 和 ``self.decrypt()``
-        的 ``offset`` 参数可能会被忽略。
-        """
-        raise NotImplementedError
-
-    @property
-    def keys(self) -> list[str]:
-        """一个字典，包括所有用到的密钥在此 Cipher 中的属性名称。
-
-        可以用 ``getattr()`` 通过这里的名称获取到具体的密钥。
-        """
-        raise NotImplementedError
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        """加密 ``plaindata`` 并返回加密结果。
-
-        位置参数 ``offset`` 用于指定 ``plaindata`` 在文件中的位置，从而进行针对性的加密。
-
-        如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
-        """
-        raise NotImplementedError
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        """解密 ``cipherdata`` 并返回加密结果。
-
-        位置参数 ``offset`` 用于指定 ``cipherdata`` 在文件中的位置，从而进行针对性的解密。
-
-        如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
-        """
-        raise NotImplementedError
+# class CipherSkel:
+#     """为 Cipher 类提供的框架，本身没有任何实际功能。"""
+# 
+#     @ClassInstanceProperty
+#     def offset_related(self) -> bool:
+#         """此 Cipher 的加密/解密是否依赖于根据输入数据在文件中的具体位置。
+# 
+#         如果此属性为假值，那么 ``self.encrypt()`` 和 ``self.decrypt()``
+#         的 ``offset`` 参数可能会被忽略。
+#         """
+#         raise NotImplementedError
+# 
+#     @property
+#     def keys(self) -> list[str]:
+#         """一个字典，包括所有用到的密钥在此 Cipher 中的属性名称。
+# 
+#         可以用 ``getattr()`` 通过这里的名称获取到具体的密钥。
+#         """
+#         raise NotImplementedError
+# 
+#     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+#         """加密 ``plaindata`` 并返回加密结果。
+# 
+#         位置参数 ``offset`` 用于指定 ``plaindata`` 在文件中的位置，从而进行针对性的加密。
+# 
+#         如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
+#         """
+#         raise NotImplementedError
+# 
+#     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+#         """解密 ``cipherdata`` 并返回加密结果。
+# 
+#         位置参数 ``offset`` 用于指定 ``cipherdata`` 在文件中的位置，从而进行针对性的解密。
+# 
+#         如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
+#         """
+#         raise NotImplementedError
 
 
 class BytesIOWithTransparentCryptLayer(io.BytesIO):
@@ -203,7 +202,7 @@ class BytesIOWithTransparentCryptLayer(io.BytesIO):
         return super(BytesIOWithTransparentCryptLayer, self).truncate(size)
 
 
-class NewCipherSkel(metaclass=ABCMeta):
+class CipherSkel(metaclass=ABCMeta):
     @abstractmethod
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         """加密 ``plaindata`` 并返回加密结果。"""
