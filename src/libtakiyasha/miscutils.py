@@ -6,7 +6,12 @@ from typing import Iterable, Mapping
 from .typedefs import BytesLike, KT, T, VT
 from .typeutils import tobytes
 
-__all__ = ['bytestrxor', 'getattribute', 'verify_literally_match', 'select']
+__all__ = [
+    'bytestrxor',
+    'getattribute',
+    'verify_literally_match',
+    'select'
+]
 
 
 def getattribute(obj: object,
