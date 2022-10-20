@@ -25,31 +25,23 @@ def make_simple_key(salt: int, length: int) -> bytes:
 
 class QMCv2KeyEncryptV1(CipherSkel):
     @property
-    def keys(self) -> list[str]:
-        return ['simple_key']
-
-    @property
     def simple_key(self) -> bytes:
         return self._simple_key
-
-    @property
-    def offset_related(self) -> bool:
-        return False
 
     def __init__(self, simple_key: BytesLike, /):
         self._simple_key = tobytes(simple_key)
 
-        self._half_of_keysize = TencentTEAWithModeCBC.keysize // 2
+        self._half_of_keysize = TencentTEAWithModeCBC.master_key_size // 2
         if len(self._simple_key) != self._half_of_keysize:
-            raise ValueError(f"invalid length of simple key "
-                             f"(should be {self._half_of_keysize}, got {len(self._simple_key)})"
+            raise ValueError(f"invalid length of simple key: "
+                             f"should be {self._half_of_keysize}, not {len(self._simple_key)}"
                              )
 
-        self._key_buf = bytearray(TencentTEAWithModeCBC.keysize)
+        self._key_buf = bytearray(TencentTEAWithModeCBC.master_key_size)
         for idx in range(TencentTEAWithModeCBC.blocksize):
             self._key_buf[idx << 1] = self._simple_key[idx]
 
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
         recipe = plaindata[:8]
         payload = plaindata[8:]
@@ -61,7 +53,7 @@ class QMCv2KeyEncryptV1(CipherSkel):
 
         return recipe + tea_cipher.encrypt(payload)  # 返回值应当在 b64encode 后使用
 
-    def decrypt(self, cipherdata: BytesLike, /, *args) -> bytes:
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
         # cipherdata 应当为 b64decode 之后的结果
         cipherdata = tobytes(cipherdata)
         recipe = cipherdata[:8]
@@ -76,10 +68,6 @@ class QMCv2KeyEncryptV1(CipherSkel):
 
 
 class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
-    @property
-    def keys(self) -> list[str]:
-        return ['simple_key', 'mix_key1', 'mix_key2']
-
     @property
     def mix_key1(self) -> bytes:
         return self._mix_key1
@@ -101,7 +89,7 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
 
         super().__init__(simple_key)
 
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
         warnings.warn(f"QMCv2 Key Encrypt V2 support is still incomplete, "
                       f"unstable and experimental, and may exhibit erroneous behavior.",
@@ -122,7 +110,7 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
 
         return encrypt_stage2
 
-    def decrypt(self, cipherdata: BytesLike, /, *args) -> bytes:
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
         cipherdata = tobytes(cipherdata)
         # cipherdata 应当是 b64decode 之后，去除了开头 18 个字符的结果
         warnings.warn(f"QMCv2 Key Encrypt V2 support is still incomplete, "
