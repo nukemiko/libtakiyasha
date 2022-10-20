@@ -8,9 +8,7 @@ from .typeutils import tobytes
 
 __all__ = [
     'bytestrxor',
-    'getattribute',
-    'verify_literally_match',
-    'select'
+    'getattribute'
 ]
 
 
@@ -80,46 +78,3 @@ def bytestrxor(term1: BytesLike, term2: BytesLike, /) -> bytes:
         raise ValueError('only byte strings of equal length can be xored')
 
     return bytes(b1 ^ b2 for b1, b2 in zip(bytestring1, bytestring2))
-
-
-def verify_literally_match(literals: Iterable[str],
-                           string: str,
-                           string_field_name: str = None
-                           ) -> str:
-    """判断目标字符串 ``string`` 是否在字符串列表 ``literals`` 中。
-
-    ``literals`` 里的元素必须全都是 ``str`` 类型对象，否则会触发 ``TypeError``。
-
-    ``literals`` 里的元素数量不可为 0，否则会触发 ``ValueError``。
-    """
-    if not all(literals_list := [isinstance(value := _, str) for _ in literals]):
-        raise TypeError(f"elements in 'literals' must be str, not {type(value).__name__}")
-    if element_counts := len(literals_list) == 0:
-        raise ValueError(f"'literals' is empty, no literal will be matched")
-    if not isinstance(string, str):
-        if string_field_name is None:
-            raise TypeError(f"target string 'string' must be str, not {type(string).__name__}")
-        else:
-            raise TypeError(f"'{string_field_name}' must be str, not {type(string).__name__}")
-
-    if string in literals_list:
-        return string
-    elif element_counts == 1:
-        raise_msg = f"{{target_name}} must be '{literals_list[-1]}', not '{string}'"
-    else:
-        literals_list_left = literals_list[:-1]
-        literals_list_left_in_msg = ', '.join([f"'{_}'" for _ in literals_list_left])
-        raise_msg = f"{{target_name}} must be either {literals_list_left_in_msg} or '{literals_list[-1]}', not '{string}'"
-
-    raise ValueError(
-        raise_msg.format(
-            "target string 'string'" if string_field_name is None else f"'{string_field_name}'"
-        )
-    )
-
-
-def select(selections: Mapping[str, VT],
-           string: str,
-           string_field_name: str = None
-           ) -> VT:
-    return dict(selections)[verify_literally_match(selections, string, string_field_name)]
