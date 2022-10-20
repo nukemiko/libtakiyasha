@@ -23,8 +23,7 @@ __all__ = [
     'StreamedAESWithModeECB',
     'TEAWithModeECB',
     'TencentTEAWithModeCBC',
-    'RC4',
-    'RC4WithNewSkel'
+    'RC4'
 ]
 
 rand = partial(srandbelow, 256)
@@ -377,70 +376,7 @@ class TencentTEAWithModeCBC(CipherSkel):
         return bytes(out_buf)
 
 
-class RC4(CipherSkel):
-    """标准的 RC4 加密算法实现。"""
-
-    def __init__(self, key: BytesLike, /) -> None:
-        """标准的 RC4 加密算法实现。
-
-        Args:
-            key: 密钥，长度不可大于 256
-        """
-        key = tobytes(key)
-        self._key = key
-        key_len = len(key)
-        if key_len > 256:
-            raise ValueError(f'key length should be less than 256, got {key_len}')
-
-        # 使用 RC4-KSA 生成 S-box
-        S = bytearray(range(256))
-        j = 0
-        for i in range(256):
-            j = (j + S[i] + key[i % key_len]) % 256
-            S[i], S[j] = S[j], S[i]
-
-        # 使用 PRGA 生成密钥流
-        meta_keystream = bytearray(256)
-        for i, idx in enumerate(range(256), start=1):
-            i %= 256
-            si = S[i] % 256
-            sj = S[(i + si) % 256] % 256
-            K = S[(si + sj) % 256]
-            meta_keystream[idx] = K
-
-        self._meta_keystream = bytes(meta_keystream)
-
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return True
-
-    @property
-    def keys(self) -> list[str]:
-        return ['masterkey']
-
-    @property
-    def masterkey(self) -> bytes:
-        """主要的密钥。"""
-        return self._key
-
-    def _yield_keystream(self,
-                         data_len: IntegerLike,
-                         data_offset: IntegerLike
-                         ) -> Generator[int, None, None]:
-        data_len = toint_nofloat(data_len)
-        data_offset = toint_nofloat(data_offset)
-
-        for i in range(data_offset, data_offset + data_len):
-            yield self._meta_keystream[i % 256]
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return self.encrypt(plaindata, offset)
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return bytestrxor(cipherdata, self._yield_keystream(len(tobytes(cipherdata)), offset))
-
-
-class RC4WithNewSkel(StreamCipherSkel):
+class RC4(StreamCipherSkel):
     @property
     def master_key(self) -> bytes:
         return self._key
