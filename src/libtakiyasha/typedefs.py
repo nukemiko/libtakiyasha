@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import array
+import mmap
 from os import PathLike
 from typing import ByteString, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union
 
@@ -14,8 +16,11 @@ __all__ = [
     'AbleConvertToInt',
     'BytesLike',
     'IntegerLike',
+    'WritableBuffer',
     'FilePath',
     'Cipher',
+    'CipherProto',
+    'StreamCipherProto',
     'CryptedIO'
 ]
 
@@ -30,6 +35,7 @@ AbleConvertToInt = Union[SupportsInt, SupportsIndex]
 
 BytesLike = Union[ByteString, AbleConvertToBytes]
 IntegerLike = Union[int, AbleConvertToInt]
+WritableBuffer = Union[bytearray, memoryview, array.array, mmap.mmap]
 
 FilePath = Union[str, bytes, bytearray, PathLike]
 
@@ -50,11 +56,53 @@ class Cipher(Protocol):
         raise NotImplementedError
 
 
+class CipherProto(Protocol):
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        raise NotImplementedError
+
+
+class StreamCipherProto(Protocol):
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Iterable[int]:
+        raise NotImplementedError
+
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        raise NotImplementedError
+
+
 class CryptedIO(Protocol):
     @property
     def cipher(self) -> Cipher:
         raise NotImplementedError
 
+    def read(self, size: IntegerLike = -1, /) -> bytes:
+        raise NotImplementedError
+
+    def write(self, data: BytesLike, /) -> int:
+        raise NotImplementedError
+
+    def seek(self, offset: IntegerLike, whence: IntegerLike = 0, /) -> int:
+        raise NotImplementedError
+
+    def tell(self) -> int:
+        raise NotImplementedError
+
+    def readable(self) -> bool:
+        raise NotImplementedError
+
+    def writable(self) -> bool:
+        raise NotImplementedError
+
+    def seekable(self) -> bool:
+        raise NotImplementedError
+
+
+class StreamCipherBasedCryptedIO(Protocol):
     def read(self, size: IntegerLike = -1, /) -> bytes:
         raise NotImplementedError
 

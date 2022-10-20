@@ -13,7 +13,7 @@ from typing import Generator
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import CipherSkel
+from .common import CipherSkel, StreamCipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
@@ -23,7 +23,8 @@ __all__ = [
     'StreamedAESWithModeECB',
     'TEAWithModeECB',
     'TencentTEAWithModeCBC',
-    'RC4'
+    'RC4',
+    'RC4WithNewSkel'
 ]
 
 rand = partial(srandbelow, 256)
@@ -437,3 +438,48 @@ class RC4(CipherSkel):
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         return bytestrxor(cipherdata, self._yield_keystream(len(tobytes(cipherdata)), offset))
+
+
+class RC4WithNewSkel(StreamCipherSkel):
+    @property
+    def master_key(self) -> bytes:
+        return self._key
+
+    def __init__(self, key: BytesLike, /) -> None:
+        """标准的 RC4 加密算法实现。
+
+        Args:
+            key: 密钥，长度不可大于 256
+        """
+        key = tobytes(key)
+        self._key = key
+        key_len = len(key)
+        if key_len > 256:
+            raise ValueError(f'key length should be less than 256, got {key_len}')
+
+        # 使用 RC4-KSA 生成 S-box
+        S = bytearray(range(256))
+        j = 0
+        for i in range(256):
+            j = (j + S[i] + key[i % key_len]) % 256
+            S[i], S[j] = S[j], S[i]
+
+        # 使用 PRGA 生成密钥流
+        meta_keystream = bytearray(256)
+        for i, idx in enumerate(range(256), start=1):
+            i %= 256
+            si = S[i] % 256
+            sj = S[(i + si) % 256] % 256
+            K = S[(si + sj) % 256]
+            meta_keystream[idx] = K
+
+        self._meta_keystream = bytes(meta_keystream)
+
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        offset = toint_nofloat(offset)
+        if offset < 0:
+            raise ValueError(f"offset must be poritive integer or 0, not {offset}")
+        length = toint_nofloat(length)
+
+        for i in range(offset, offset + length):
+            yield self._meta_keystream[i % 256]
