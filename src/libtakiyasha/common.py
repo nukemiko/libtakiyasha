@@ -19,6 +19,7 @@ from .typeutils import verify_cipher, ClassInstanceProperty, tobytes, toint_nofl
 __all__ = [
     'CipherSkel',
     'BytesIOWithTransparentCryptLayer',
+    'NewCipherSkel',
     'StreamCipherSkel',
     'CryptLayerWrappedIOSkel'
 ]
@@ -200,6 +201,18 @@ class BytesIOWithTransparentCryptLayer(io.BytesIO):
             size = toint_nofloat(size)
 
         return super(BytesIOWithTransparentCryptLayer, self).truncate(size)
+
+
+class NewCipherSkel(metaclass=ABCMeta):
+    @abstractmethod
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
+        """加密 ``plaindata`` 并返回加密结果。"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        """解密 ``cipherdata`` 并返回加密结果。"""
+        raise NotImplementedError
 
 
 class StreamCipherSkel(metaclass=ABCMeta):

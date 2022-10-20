@@ -13,7 +13,7 @@ from typing import Generator
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import CipherSkel, StreamCipherSkel
+from .common import CipherSkel, StreamCipherSkel, NewCipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
@@ -29,42 +29,29 @@ __all__ = [
 rand = partial(srandbelow, 256)
 
 
-class StreamedAESWithModeECB(CipherSkel):
+class StreamedAESWithModeECB(NewCipherSkel):
     @CachedClassInstanceProperty
     def blocksize(self) -> int:
         return 16
 
     @property
-    def keys(self) -> list[str]:
-        return ['masterkey']
-
-    @property
-    def masterkey(self) -> bytes:
-        """主要的密钥。"""
+    def master_key(self) -> bytes:
         return self._key
 
     def __init__(self, key: BytesLike, /) -> None:
         self._key = tobytes(key)
+        self._base_aes_cipher = AESModeOfOperationECB(self._key)
 
-        self._raw_cipher = AESModeOfOperationECB(key=self.masterkey)
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
+        plaindata_padded = append_PKCS7_padding(tobytes(plaindata))
+        iterable_by_blksize = iter(partial(io.BytesIO(plaindata_padded).read, self.blocksize), b'')
+        return b''.join(self._base_aes_cipher.encrypt(blk) for blk in iterable_by_blksize)
 
-    def yield_block(self, data: BytesLike) -> Generator[bytes, None, None]:
-        for blk in iter(partial(io.BytesIO(tobytes(data)).read, self.blocksize), b''):
-            yield blk
-
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return False
-
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
-        return b''.join(
-            self._raw_cipher.encrypt(b) for b in self.yield_block(append_PKCS7_padding(tobytes(plaindata)))
-        )
-
-    def decrypt(self, cipherdata: BytesLike, /, *args) -> bytes:
-        return strip_PKCS7_padding(
-            b''.join(self._raw_cipher.decrypt(b) for b in self.yield_block(tobytes(cipherdata)))
-        )
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        cipherdata = tobytes(cipherdata)
+        iterable_by_blksize = iter(partial(io.BytesIO(cipherdata).read, self.blocksize), b'')
+        plaindata_padded = b''.join(self._base_aes_cipher.decrypt(blk) for blk in iterable_by_blksize)
+        return strip_PKCS7_padding(plaindata_padded)
 
 
 class TEAWithModeECB(CipherSkel):
