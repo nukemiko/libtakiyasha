@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import array
+import mmap
 from os import PathLike
-from typing import ByteString, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union
+from typing import ByteString, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
 
 __all__ = [
     'T',
@@ -14,9 +16,11 @@ __all__ = [
     'AbleConvertToInt',
     'BytesLike',
     'IntegerLike',
+    'WritableBuffer',
     'FilePath',
-    'Cipher',
-    'CryptedIO'
+    'CipherProto',
+    'StreamCipherProto',
+    'StreamCipherBasedCryptedIOProto'
 ]
 
 T = TypeVar('T')
@@ -30,17 +34,23 @@ AbleConvertToInt = Union[SupportsInt, SupportsIndex]
 
 BytesLike = Union[ByteString, AbleConvertToBytes]
 IntegerLike = Union[int, AbleConvertToInt]
+WritableBuffer = Union[bytearray, memoryview, array.array, mmap.mmap]
 
 FilePath = Union[str, bytes, bytearray, PathLike]
 
 
-class Cipher(Protocol):
-    @property
-    def offset_related(self) -> bool:
+@runtime_checkable
+class CipherProto(Protocol):
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
         raise NotImplementedError
 
-    @property
-    def keys(self) -> list[str]:
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        raise NotImplementedError
+
+
+@runtime_checkable
+class StreamCipherProto(Protocol):
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Iterable[int]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
@@ -50,11 +60,8 @@ class Cipher(Protocol):
         raise NotImplementedError
 
 
-class CryptedIO(Protocol):
-    @property
-    def cipher(self) -> Cipher:
-        raise NotImplementedError
-
+@runtime_checkable
+class StreamCipherBasedCryptedIOProto(Protocol):
     def read(self, size: IntegerLike = -1, /) -> bytes:
         raise NotImplementedError
 

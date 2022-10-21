@@ -5,35 +5,25 @@ from functools import lru_cache
 from typing import Generator
 
 from .consts import KEY256_MAPPING
-from ..common import CipherSkel
-from ..miscutils import bytestrxor
+from ..common import StreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
+from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 
 __all__ = [
-    'Mask128',
-    'HardenedRC4'
+    'HardenedRC4',
+    'Mask128'
 ]
 
 
-class Mask128(CipherSkel):
+class Mask128(StreamCipherSkel):
     @property
-    def keys(self) -> list[str]:
-        return ['mask128', 'original_mask_or_key']
-
-    @property
-    def original_mask_or_key(self) -> bytes | None:
-        return self._original_mask_or_key
+    def original_master_key(self) -> bytes | None:
+        if hasattr(self, '_original_master_key'):
+            return self._original_master_key
 
     @property
     def mask128(self) -> bytes:
         return self._mask128
-
-    def __init__(self, mask128: BytesLike, /):
-        self._mask128 = tobytes(mask128)
-        self._original_mask_or_key: bytes | None = None
-        if len(self._mask128) != 128:
-            raise ValueError(f"invalid mask length (should be 128, got {len(self._mask128)})")
 
     @classmethod
     def from_qmcv1_mask44(cls, mask44: BytesLike) -> Mask128:
@@ -76,64 +66,78 @@ class Mask128(CipherSkel):
         for idx128 in range(128):
             if idx128 > 0x7fff:
                 idx128 %= 0x7fff
-            idx = (idx128 ** 2 + 71214) & 0xff
+            idx = (idx128 ** 2 + 71214) % 256
 
             value = key256[idx]
             rotate = ((idx & 7) + 4) % 8
 
             mask128[idx128] = ((value << rotate) % 256) | ((value >> rotate) % 256)
 
-        ret = cls(mask128)
-        ret._original_mask_or_key = key256
+        instance = cls(mask128)
+        instance._original_master_key = key256
 
-        return ret
+        return instance
 
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return True
+    def __init__(self, mask128: BytesLike, /):
+        self._mask128 = tobytes(mask128)
+        if len(self._mask128) != 128:
+            raise ValueError(f"invalid mask length: should be 128, got {len(self._mask128)}")
 
     @classmethod
-    def yield_keystream(cls,
-                        mask128: BytesLike,
-                        length: IntegerLike,
-                        offset: IntegerLike
-                        ) -> Generator[int, None, None]:
+    def cls_keystream(cls,
+                      offset: IntegerLike,
+                      length: IntegerLike, /,
+                      mask128: BytesLike
+                      ) -> Generator[int, None, None]:
         mask128: bytes = tobytes(mask128)
         if len(mask128) != 128:
             raise ValueError(f"invalid mask length (should be 128, got {len(mask128)})")
+        firstblk_data = mask128 * 256  # 前 32768 字节
+        secondblk_data = firstblk_data[1:-1]  # 第 32769 至 65535 字节
+        startblk_data = firstblk_data + secondblk_data  # 初始块：前 65535 字节
+        startblk_len = len(startblk_data)
+        commonblk_data = firstblk_data[:-1]  # 普通块：第 65536 字节往后每一个 32767 大小的块
+        commonblk_len = len(commonblk_data)
+        offset = toint_nofloat(offset)
         length = toint_nofloat(length)
-        offset = toint_nofloat(offset)
+        if offset < 0:
+            raise ValueError("first argument 'offset' must be a non-negative integer")
+        if length < 0:
+            raise ValueError("second argument 'length' must be a non-negative integer")
 
-        idx = offset - 1
-        idx128 = (offset % 128) - 1
+        if 0 <= offset < startblk_len:
+            max_target_in_startblk_len = startblk_len - offset
+            target_in_commonblk_len = length - max_target_in_startblk_len
+            target_in_startblk_len = min(length, max_target_in_startblk_len)
+            yield from startblk_data[offset:offset + target_in_startblk_len]
+            if target_in_commonblk_len <= 0:
+                return
+            else:
+                offset = 0
+        else:
+            offset -= startblk_len
+            target_in_commonblk_len = length
 
-        for _ in range(length):
-            idx += 1
-            idx128 += 1
-            if idx == 0x8000 or (idx > 0x8000 and idx % 0x8000 == 0x7fff):
-                idx += 1
-                idx128 += 1
-            idx128 %= 128
+        target_offset_in_commonblk = offset % commonblk_len
+        if target_offset_in_commonblk == 0:
+            target_before_commonblk_area_len = 0
+        else:
+            target_before_commonblk_area_len = commonblk_len - target_offset_in_commonblk
+        yield from commonblk_data[target_offset_in_commonblk:target_offset_in_commonblk + target_before_commonblk_area_len]
+        target_in_commonblk_len -= target_before_commonblk_area_len
 
-            yield mask128[idx128]
+        target_overrided_whole_commonblk_count = target_in_commonblk_len // commonblk_len
+        target_after_commonblk_area_len = target_in_commonblk_len % commonblk_len
 
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return self.decrypt(plaindata, offset)
+        for _ in range(target_overrided_whole_commonblk_count):
+            yield from commonblk_data
+        yield from commonblk_data[:target_after_commonblk_area_len]
 
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        cipherdata = tobytes(cipherdata)
-        offset = toint_nofloat(offset)
-
-        return bytestrxor(cipherdata,
-                          self.yield_keystream(self._mask128, len(cipherdata), offset)
-                          )
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        yield from self.cls_keystream(offset, length, mask128=self._mask128)
 
 
-class HardenedRC4(CipherSkel):
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return True
-
+class HardenedRC4(StreamCipherSkel):
     @property
     def hash_base(self) -> int:
         base = 1
@@ -156,10 +160,6 @@ class HardenedRC4(CipherSkel):
     @CachedClassInstanceProperty
     def common_segment_size(self) -> int:
         return 5120
-
-    @property
-    def keys(self) -> list[str]:
-        return ['key512']
 
     @property
     def key512(self) -> bytes:
@@ -212,12 +212,8 @@ class HardenedRC4(CipherSkel):
             if i >= 0:
                 yield box[(box[j] + box[k]) % key_len]
 
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return self.decrypt(plaindata, offset)
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        target_buffer = tobytearray(cipherdata)
-        pending = len(cipherdata)
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        pending = toint_nofloat(length)
         done = 0
         offset = toint_nofloat(offset)
 
@@ -229,42 +225,22 @@ class HardenedRC4(CipherSkel):
             offset += p
 
         if 0 <= offset < self.first_segment_size:
-            if pending > self.first_segment_size - offset:
-                blksize = self.first_segment_size - offset
-            else:
-                blksize = pending
-            target_buffer[:blksize] = bytestrxor(
-                target_buffer[:blksize],
-                self._yield_first_segment_keystream(blksize, offset)
-            )
+            blksize = min(pending, self.first_segment_size - offset)
+            yield from self._yield_first_segment_keystream(blksize, offset)
             mark(blksize)
             if pending <= 0:
-                return bytes(target_buffer)
+                raise StopIteration
 
         if offset % self.common_segment_size != 0:
-            if pending > self.common_segment_size - (offset % self.common_segment_size):
-                blksize = self.common_segment_size - (offset % self.common_segment_size)
-            else:
-                blksize = pending
-            target_buffer[done:done + blksize] = bytestrxor(
-                target_buffer[done:done + blksize],
-                self._yield_common_segment_keystream(blksize, offset)
-            )
+            blksize = min(pending, self.common_segment_size - (offset % self.common_segment_size))
+            yield from self._yield_common_segment_keystream(blksize, offset)
             mark(blksize)
             if pending <= 0:
-                return bytes(target_buffer)
+                raise StopIteration
 
         while pending > self.common_segment_size:
-            target_buffer[done:done + self.common_segment_size] = bytestrxor(
-                target_buffer[done:done + self.common_segment_size],
-                self._yield_common_segment_keystream(self.common_segment_size, offset)
-            )
+            yield from self._yield_common_segment_keystream(self.common_segment_size, offset)
             mark(self.common_segment_size)
 
         if pending > 0:
-            target_buffer[done:] = bytestrxor(
-                target_buffer[done:],
-                self._yield_common_segment_keystream(len(target_buffer[done:]), offset)
-            )
-
-        return bytes(target_buffer)
+            yield from self._yield_common_segment_keystream(length - done, offset)

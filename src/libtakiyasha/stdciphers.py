@@ -13,7 +13,7 @@ from typing import Generator
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import CipherSkel
+from .common import StreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
@@ -23,7 +23,7 @@ __all__ = [
     'StreamedAESWithModeECB',
     'TEAWithModeECB',
     'TencentTEAWithModeCBC',
-    'RC4'
+    'ARC4'
 ]
 
 rand = partial(srandbelow, 256)
@@ -35,36 +35,23 @@ class StreamedAESWithModeECB(CipherSkel):
         return 16
 
     @property
-    def keys(self) -> list[str]:
-        return ['masterkey']
-
-    @property
-    def masterkey(self) -> bytes:
-        """主要的密钥。"""
+    def master_key(self) -> bytes:
         return self._key
 
     def __init__(self, key: BytesLike, /) -> None:
         self._key = tobytes(key)
+        self._base_aes_cipher = AESModeOfOperationECB(self._key)
 
-        self._raw_cipher = AESModeOfOperationECB(key=self.masterkey)
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
+        plaindata_padded = append_PKCS7_padding(tobytes(plaindata))
+        iterable_by_blksize = iter(partial(io.BytesIO(plaindata_padded).read, self.blocksize), b'')
+        return b''.join(self._base_aes_cipher.encrypt(blk) for blk in iterable_by_blksize)
 
-    def yield_block(self, data: BytesLike) -> Generator[bytes, None, None]:
-        for blk in iter(partial(io.BytesIO(tobytes(data)).read, self.blocksize), b''):
-            yield blk
-
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return False
-
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
-        return b''.join(
-            self._raw_cipher.encrypt(b) for b in self.yield_block(append_PKCS7_padding(tobytes(plaindata)))
-        )
-
-    def decrypt(self, cipherdata: BytesLike, /, *args) -> bytes:
-        return strip_PKCS7_padding(
-            b''.join(self._raw_cipher.decrypt(b) for b in self.yield_block(tobytes(cipherdata)))
-        )
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        cipherdata = tobytes(cipherdata)
+        iterable_by_blksize = iter(partial(io.BytesIO(cipherdata).read, self.blocksize), b'')
+        plaindata_padded = b''.join(self._base_aes_cipher.decrypt(blk) for blk in iterable_by_blksize)
+        return strip_PKCS7_padding(plaindata_padded)
 
 
 class TEAWithModeECB(CipherSkel):
@@ -73,17 +60,9 @@ class TEAWithModeECB(CipherSkel):
         return 16
 
     @property
-    def keys(self) -> list[str]:
-        return ['masterkey']
-
-    @property
-    def masterkey(self) -> bytes:
+    def master_key(self) -> bytes:
         """主要的密钥。"""
         return self._key
-
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return False
 
     def __init__(self,
                  key: BytesLike,
@@ -96,9 +75,9 @@ class TEAWithModeECB(CipherSkel):
         self._delta = toint_nofloat(magic_number)
 
         if len(self._key) != self.blocksize:
-            raise ValueError(f"invalid key length {len(self._key)} (should be {self.blocksize})")
+            raise ValueError(f"invalid key length: should be {self.blocksize}, not {len(self._key)}")
         if self._rounds % 2 != 0:
-            raise ValueError(f'even number of rounds required (got {self._rounds})')
+            raise ValueError(f'an even number of rounds is required (but got {self._rounds})')
 
     @classmethod
     def transvalues(cls, data: bytes, key: bytes) -> tuple[int, int, int, int, int, int]:
@@ -111,8 +90,8 @@ class TEAWithModeECB(CipherSkel):
 
         return v0, v1, k0, k1, k2, k3
 
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), self.masterkey)
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), self.master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -128,8 +107,8 @@ class TEAWithModeECB(CipherSkel):
 
         return v0.to_bytes(4, 'big') + v1.to_bytes(4, 'big')
 
-    def decrypt(self, cipherdata: BytesLike, /, *args) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), self.masterkey)
+    def decrypt(self, cipherdata: BytesLike, /) -> bytes:
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), self.master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -152,11 +131,7 @@ class TencentTEAWithModeCBC(CipherSkel):
         return 8
 
     @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return False
-
-    @CachedClassInstanceProperty
-    def keysize(self) -> int:
+    def master_key_size(self) -> int:
         return 16
 
     @CachedClassInstanceProperty
@@ -168,12 +143,9 @@ class TencentTEAWithModeCBC(CipherSkel):
         return 7
 
     @property
-    def keys(self) -> list[str]:
-        return ['masterkey', 'lower_level_cipher_key']
-
-    def masterkey(self) -> bytes:
+    def master_key(self) -> bytes:
         """主要的密钥。"""
-        return self._lower_level_tea_cipher.masterkey
+        return self._lower_level_tea_cipher.master_key
 
     @property
     def lower_level_cipher(self) -> TEAWithModeECB:
@@ -195,14 +167,16 @@ class TencentTEAWithModeCBC(CipherSkel):
         key = tobytes(key)
         rounds = toint_nofloat(rounds)
         magic_number = toint_nofloat(magic_number)
-        if len(key) != self.keysize:
-            raise ValueError(f"invalid key length {len(key)} (should be {self.keysize})")
+        if len(key) != self.master_key_size:
+            raise ValueError(f"invalid key length {len(key)}: "
+                             f"should be {self.master_key_size}, not {len(key)}"
+                             )
         if rounds % 2 != 0:
-            raise ValueError(f"'rounds' must be an even integer, got {rounds}")
+            raise ValueError(f"'rounds' must be an even integer, not {rounds}")
 
         self._lower_level_tea_cipher = TEAWithModeECB(key, rounds, magic_number)
 
-    def encrypt(self, plaindata: BytesLike, /, *args) -> bytes:
+    def encrypt(self, plaindata: BytesLike, /) -> bytes:
         # 根据 plaindata 长度计算 pad_len，最小长度必须为 8 的整数倍
         plaindata = tobytes(plaindata)
 
@@ -304,9 +278,7 @@ class TencentTEAWithModeCBC(CipherSkel):
         return pad_salt_body_zero_len + pad_len
 
     def decrypt(self,
-                cipherdata: BytesLike,
-                /,
-                *args,
+                cipherdata: BytesLike, /,
                 zero_check: bool = False
                 ) -> bytes:
         cipherdata = tobytes(cipherdata)
@@ -316,8 +288,8 @@ class TencentTEAWithModeCBC(CipherSkel):
                              f"is not a multiple of the block size ({self.blocksize})"
                              )
         if len(cipherdata) < self.blocksize * 2:
-            raise ValueError(f"encrypted keydata length is too short "
-                             f"(should be >= {self.blocksize * 2}, got {len(cipherdata)})"
+            raise ValueError(f"encrypted keydata length is too short: "
+                             f"should be >= {self.blocksize * 2}, got {len(cipherdata)}"
                              )
 
         dest_buf = bytearray(self._lower_level_tea_cipher.decrypt(cipherdata))
@@ -376,8 +348,10 @@ class TencentTEAWithModeCBC(CipherSkel):
         return bytes(out_buf)
 
 
-class RC4(CipherSkel):
-    """标准的 RC4 加密算法实现。"""
+class ARC4(StreamCipherSkel):
+    @property
+    def master_key(self) -> bytes:
+        return self._key
 
     def __init__(self, key: BytesLike, /) -> None:
         """标准的 RC4 加密算法实现。
@@ -409,31 +383,11 @@ class RC4(CipherSkel):
 
         self._meta_keystream = bytes(meta_keystream)
 
-    @CachedClassInstanceProperty
-    def offset_related(self) -> bool:
-        return True
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        offset = toint_nofloat(offset)
+        if offset < 0:
+            raise ValueError(f"offset must be poritive integer or 0, not {offset}")
+        length = toint_nofloat(length)
 
-    @property
-    def keys(self) -> list[str]:
-        return ['masterkey']
-
-    @property
-    def masterkey(self) -> bytes:
-        """主要的密钥。"""
-        return self._key
-
-    def _yield_keystream(self,
-                         data_len: IntegerLike,
-                         data_offset: IntegerLike
-                         ) -> Generator[int, None, None]:
-        data_len = toint_nofloat(data_len)
-        data_offset = toint_nofloat(data_offset)
-
-        for i in range(data_offset, data_offset + data_len):
+        for i in range(offset, offset + length):
             yield self._meta_keystream[i % 256]
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return self.encrypt(plaindata, offset)
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        return bytestrxor(cipherdata, self._yield_keystream(len(tobytes(cipherdata)), offset))
