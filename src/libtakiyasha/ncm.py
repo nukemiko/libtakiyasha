@@ -35,6 +35,7 @@ class CloudMusicIdentifier:
     flag: int = 0
     bitrate: int = 0
     duration: int = 0
+    mp3DocId: str = ''
     alias: list[str] = dcfield(default_factory=list)
     transNames: list[str] = dcfield(default_factory=list)
 
