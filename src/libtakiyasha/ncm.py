@@ -11,7 +11,7 @@ from .common import CryptLayerWrappedIOSkel
 from .exceptions import CrypterCreatingError, CrypterSavingError
 from .keyutils import make_random_ascii_string, make_random_number_string
 from .miscutils import bytestrxor
-from .stdciphers import RC4, StreamedAESWithModeECB
+from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import is_filepath, tobytes, verify_fileobj
 
@@ -22,7 +22,7 @@ _TAG_KEY = b'\x23\x31\x34\x6c\x6a\x6b\x5f\x21\x5c\x5d\x26\x30\x55\x3c\x27\x28'
 
 @dataclass
 class CloudMusicIdentifier:
-    """网易云音乐 163key 的解析、储存和构建。"""
+    """解析、储存和重建网易云音乐 163key 。"""
     format: str = ''
     musicId: str = ''
     musicName: str = ''
@@ -123,8 +123,21 @@ class CloudMusicIdentifier:
 
 
 class NCM(CryptLayerWrappedIOSkel):
+    """基于 BytesIO 的 NCM 透明加密二进制流。
+
+    所有读写相关方法都会经过透明加密层处理：
+    读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+    调用读写相关方法时，附加参数 ``nocryptlayer=True``
+    可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+    如果你要新建一个 NCM 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+    ``NCM.new()`` 和 ``NCM.from_file()`` 新建或打开已有 NCM 文件，
+    使用已有 NCM 对象的 ``self.to_file()`` 方法将其保存到文件。
+    """
+
     @property
-    def cipher(self) -> RC4:
+    def cipher(self) -> ARC4:
         return self._cipher
 
     @property
@@ -160,12 +173,24 @@ class NCM(CryptLayerWrappedIOSkel):
         self._cover_data = b''
 
     def __init__(self,
-                 cipher: RC4, /,
+                 cipher: ARC4, /,
                  initial_bytes: BytesLike = b'',
                  core_key: BytesLike = None, *,
                  ncm_tag: CloudMusicIdentifier | Mapping[str, Any] | Iterable[tuple[str, Any]] = None,
                  cover_data: BytesLike = b''
                  ) -> None:
+        """基于 BytesIO 的 NCM 透明加密二进制流。
+
+        所有读写相关方法都会经过透明加密层处理：
+        读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+        调用读写相关方法时，附加参数 ``nocryptlayer=True``
+        可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+        如果你要新建一个 NCM 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+        ``NCM.new()`` 和 ``NCM.from_file()`` 新建或打开已有 NCM 文件，
+        使用已有 NCM 对象的 ``self.to_file()`` 方法将其保存到文件。
+        """
         if core_key is None:
             self._core_key = None
         else:
@@ -177,9 +202,9 @@ class NCM(CryptLayerWrappedIOSkel):
         self._ncm_tag: CloudMusicIdentifier = ncm_tag
         self._cover_data: bytes = tobytes(cover_data)
         super().__init__(cipher, initial_bytes)
-        if not isinstance(self._cipher, RC4):
+        if not isinstance(self._cipher, ARC4):
             raise TypeError(f"'{type(self).__name__}' "
-                            f"only support cipher '{RC4.__module__}.{RC4.__name__}', "
+                            f"only support cipher '{ARC4.__module__}.{ARC4.__name__}', "
                             f"got '{type(self._cipher).__name__}'"
                             )
 
@@ -192,7 +217,7 @@ class NCM(CryptLayerWrappedIOSkel):
         """创建一个空的 NCM 对象。"""
         master_key = (make_random_number_string(29) + make_random_ascii_string(84)).encode('utf-8')
 
-        return cls(RC4(master_key),
+        return cls(ARC4(master_key),
                    core_key=core_key,
                    ncm_tag=ncm_tag,
                    cover_data=cover_data
@@ -224,7 +249,7 @@ class NCM(CryptLayerWrappedIOSkel):
                                               master_key_encrypted_xored
                                               )
             master_key = StreamedAESWithModeECB(core_key).decrypt(master_key_encrypted)[17:]  # 去除开头的 b'neteasecloudmusic'
-            cipher = RC4(master_key)
+            cipher = ARC4(master_key)
 
             ncm_163key_xored_len = int.from_bytes(fileobj.read(4), 'little')
             ncm_163key_xored = fileobj.read(ncm_163key_xored_len)
