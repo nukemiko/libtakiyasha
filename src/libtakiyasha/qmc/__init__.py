@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import warnings
 from base64 import b64decode, b64encode
 from binascii import Error as BinasciiError
 from dataclasses import dataclass
+from secrets import token_bytes
 from typing import IO, Literal, NamedTuple
 
-from .dataciphers import HardenedRC4, Mask128
+from .dataciphers import HardenedRC4, HardenedRC4WithNewSkel, Mask128, Mask128WithNewSkel
 from .keyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
-from ..common import BytesIOWithTransparentCryptLayer
+from ..common import BytesIOWithTransparentCryptLayer, CryptLayerWrappedIOSkel
 from ..exceptions import CrypterCreatingError, CrypterSavingError
 from ..keyutils import make_random_ascii_string, make_salt
 from ..typedefs import BytesLike, FilePath, IntegerLike
 from ..typeutils import is_filepath, tobytes, toint_nofloat, verify_fileobj
+from ..warns import CrypterCreatingWarning, CrypterSavingWarning
 
 
 @dataclass
@@ -26,7 +29,7 @@ class QMCv2QTag:
         segments = tobytes(bytestring).split(b',')
         if len(segments) != 3:
             raise ValueError('invalid QMCv2 QTag data: the counts of splitted segments '
-                             f'should be equal to 3, got {len(segments)}'
+                             f'should be equal to 3, not {len(segments)}'
                              )
 
         master_key_encrypted_b64encoded = segments[0]
@@ -69,7 +72,7 @@ class QMCv2STag:
         segments = tobytes(bytestring).split(b',')
         if len(segments) != 3:
             raise ValueError('invalid QMCv2 STag data: the counts of splitted segments '
-                             f'should be equal to 3, got {len(segments)}'
+                             f'should be equal to 3, not {len(segments)}'
                              )
 
         song_id = int(segments[0])
@@ -655,3 +658,498 @@ def _extract_qmcv2_file(fileobj: IO[bytes],
     qmcv2tag = probe_result.qmcv2tag
 
     return QMCv2(cipher, initial_data, simple_key, mix_key1=mix_key1, mix_key2=mix_key2, qmcv2tag=qmcv2tag)
+
+
+class QMCv1WithNewSkel(CryptLayerWrappedIOSkel):
+    @property
+    def cipher(self) -> Mask128WithNewSkel:
+        return self._cipher
+
+    @property
+    def master_key(self):
+        return self.cipher.mask128
+
+    def __init__(self, cipher: Mask128WithNewSkel, /, initial_bytes: BytesLike = b'') -> None:
+        super().__init__(cipher, initial_bytes)
+        if not isinstance(cipher, Mask128WithNewSkel):
+            raise TypeError(f"'{type(self).__name__}' "
+                            f"only support cipher '{Mask128WithNewSkel.__module__}.{Mask128WithNewSkel.__name__}', "
+                            f"not '{type(self._cipher).__name__}'"
+                            )
+
+    @classmethod
+    def new(cls) -> QMCv1WithNewSkel:
+        master_key = token_bytes(128)
+
+        return cls(Mask128WithNewSkel(master_key))
+
+    @classmethod
+    def from_file(cls,
+                  qmcv1_filething: FilePath | IO[bytes], /,
+                  master_key: BytesLike
+                  ) -> QMCv1WithNewSkel:
+        master_key = tobytes(master_key)
+        if len(master_key) == 44:
+            cipher = Mask128WithNewSkel.from_qmcv1_mask44(master_key)
+        elif len(master_key) == 128:
+            cipher = Mask128WithNewSkel(master_key)
+        elif len(master_key) == 256:
+            cipher = Mask128WithNewSkel.from_qmcv1_mask256(master_key)
+        else:
+            raise ValueError("the length of second argument 'master_key' "
+                             f"must be 44, 128 or 256, not {len(master_key)}"
+                             )
+
+        if is_filepath(qmcv1_filething):
+            with open(qmcv1_filething, mode='rb') as qmcv1_fileobj:
+                instance = cls(cipher, qmcv1_fileobj.read())
+        else:
+            qmcv1_fileobj = verify_fileobj(qmcv1_filething, 'binary',
+                                           verify_readable=True
+                                           )
+            instance = cls(cipher, qmcv1_fileobj.read())
+
+        instance._name = getattr(qmcv1_fileobj, 'name', None)
+
+        return instance
+
+    def to_file(self, qmcv1_filething: FilePath | IO[bytes]) -> None:
+        if is_filepath(qmcv1_filething):
+            with open(qmcv1_filething, mode='wb') as qmcv1_fileobj:
+                qmcv1_fileobj.write(self.getvalue(nocryptlayer=True))
+        else:
+            qmcv1_fileobj = verify_fileobj(qmcv1_filething, 'binary',
+                                           verify_writable=True
+                                           )
+            qmcv1_fileobj.write(self.getvalue(nocryptlayer=True))
+
+
+class QMCv2WithNewSkel(CryptLayerWrappedIOSkel):
+    @property
+    def cipher(self) -> HardenedRC4WithNewSkel | Mask128WithNewSkel:
+        return self._cipher
+
+    @property
+    def master_key(self) -> bytes:
+        if isinstance(self.cipher, HardenedRC4WithNewSkel):
+            return self.cipher.key512
+        elif isinstance(self.cipher, Mask128WithNewSkel):
+            if self.cipher.original_master_key is None:
+                return self.cipher.mask128
+            return self.cipher.original_master_key
+
+    @property
+    def simple_key(self) -> bytes | None:
+        return self._simple_key
+
+    @simple_key.setter
+    def simple_key(self, value: BytesLike) -> None:
+        self._simple_key = tobytes(value)
+
+    @simple_key.deleter
+    def simple_key(self) -> None:
+        self._simple_key = None
+
+    @property
+    def mix_key1(self) -> bytes | None:
+        return self._mix_key1
+
+    @mix_key1.setter
+    def mix_key1(self, value: BytesLike) -> None:
+        self._mix_key1 = tobytes(value)
+
+    @mix_key1.deleter
+    def mix_key1(self) -> None:
+        self._mix_key1 = None
+
+    @property
+    def mix_key2(self) -> bytes | None:
+        return self._mix_key2
+
+    @mix_key2.setter
+    def mix_key2(self, value: BytesLike) -> None:
+        self._mix_key2 = tobytes(value)
+
+    @mix_key2.deleter
+    def mix_key2(self) -> None:
+        self._mix_key2 = None
+
+    @property
+    def song_id(self) -> int:
+        return self._song_id
+
+    @song_id.setter
+    def song_id(self, value: IntegerLike) -> None:
+        self._song_id = toint_nofloat(value)
+
+    @song_id.deleter
+    def song_id(self) -> None:
+        self._song_id = 0
+
+    @property
+    def song_mid(self) -> str:
+        return self._song_mid
+
+    @song_mid.setter
+    def song_mid(self, value: str) -> None:
+        self._song_mid = str(value)
+
+    @song_mid.deleter
+    def song_mid(self) -> None:
+        self._song_mid = '0' * 14
+
+    @property
+    def unknown_value1(self) -> bytes:
+        return self._unknown_value1
+
+    @unknown_value1.setter
+    def unknown_value1(self, value: BytesLike) -> None:
+        self._unknown_value1 = tobytes(value)
+
+    @unknown_value1.deleter
+    def unknown_value1(self) -> None:
+        self._unknown_value1 = b'2'
+
+    @property
+    def qtag(self) -> QMCv2QTag | None:
+        if self.simple_key is not None and len(self.master_key) in (256, 512):
+            return QMCv2QTag.new(
+                master_key=self.master_key,
+                simple_key=self.simple_key,
+                song_id=self.song_id,
+                unknown_value1=self.unknown_value1
+            )
+
+    @property
+    def stag(self) -> QMCv2STag:
+        return QMCv2STag(
+            song_id=self.song_id,
+            unknown_value1=self.unknown_value1,
+            song_mid=self.song_mid
+        )
+
+    def __init__(self,
+                 cipher: HardenedRC4WithNewSkel | Mask128WithNewSkel, /,
+                 initial_bytes: BytesLike = b'',
+                 simple_key: BytesLike = None,
+                 mix_key1: BytesLike = None,
+                 mix_key2: BytesLike = None, *,
+                 song_id: IntegerLike = 0,
+                 song_mid: str = '0' * 14,
+                 unknown_value1: BytesLike = b'2'
+                 ) -> None:
+        super().__init__(cipher, initial_bytes)
+        if not isinstance(cipher, (HardenedRC4WithNewSkel, Mask128WithNewSkel)):
+            raise TypeError(f'unsupported Cipher: '
+                            f'supports '
+                            f'{Mask128WithNewSkel.__module__}.{Mask128WithNewSkel.__name__} and '
+                            f'{HardenedRC4WithNewSkel.__module__}.{HardenedRC4WithNewSkel.__name__}, '
+                            f'not {type(cipher).__name__}'
+                            )
+
+        if simple_key is None:
+            self._simple_key = None
+        else:
+            self._simple_key = tobytes(simple_key)
+        if mix_key1 is None:
+            self._mix_key1 = None
+        else:
+            self._mix_key1 = tobytes(mix_key1)
+        if mix_key2 is None:
+            self._mix_key2 = None
+        else:
+            self._mix_key2 = tobytes(mix_key2)
+        self._song_id = toint_nofloat(song_id)
+        self._song_mid = str(song_mid)
+        self._unknown_value1 = tobytes(unknown_value1)
+
+    @classmethod
+    def new(cls,
+            cipher_type: Literal['mask', 'rc4'],
+            simple_key: BytesLike = None,
+            mix_key1: BytesLike = None,
+            mix_key2: BytesLike = None, *,
+            song_id: IntegerLike = 0,
+            song_mid: str = '0' * 14,
+            unknown_value1: BytesLike = b'2'
+            ) -> QMCv2WithNewSkel:
+        if cipher_type == 'mask':
+            cipher = Mask128WithNewSkel.from_qmcv2_key256(make_random_ascii_string(256))
+        elif cipher_type == 'rc4':
+            cipher = HardenedRC4WithNewSkel(make_random_ascii_string(512))
+        elif isinstance(cipher_type, str):
+            raise ValueError(f"first argument 'cipher_type' must be 'mask' or 'rc4', not {cipher_type}")
+        else:
+            raise TypeError(f"first argument 'cipher_type' must be str, "
+                            f"not {type(cipher_type).__name__}"
+                            )
+
+        return cls(cipher,
+                   simple_key=simple_key,
+                   mix_key1=mix_key1,
+                   mix_key2=mix_key2,
+                   song_id=song_id,
+                   song_mid=song_mid,
+                   unknown_value1=unknown_value1
+                   )
+
+    @classmethod
+    def from_file(cls,
+                  qmcv2_filething: FilePath | IO[bytes], /,
+                  simple_key: BytesLike = None,
+                  mix_key1: BytesLike = None,
+                  mix_key2: BytesLike = None, *,
+                  master_key: BytesLike = None,
+                  ):
+        def operation(fileobj: IO[bytes]) -> cls:
+            fileobj_endpos = fileobj.seek(0, 2)
+            fileobj.seek(-4, 2)
+            tail_data = fileobj.read(4)
+
+            song_id = 0
+            song_mid = '0' * 14
+            unknown_value1 = b'2'
+
+            if tail_data == b'STag':
+                if master_key is None:
+                    raise ValueError("'master_key' is required for QMCv2 file with STag "
+                                     "audio data encryption/decryption"
+                                     )
+                fileobj.seek(-8, 2)
+                stag_len = int.from_bytes(fileobj.read(4), 'big')
+                if stag_len + 8 > fileobj_endpos:
+                    raise CrypterCreatingError(
+                        f'{fileobj} is not a valid QMCv2 file: '
+                        f'QMCv2 STag data length ({stag_len + 8}) '
+                        f'is greater than file length ({fileobj_endpos})'
+                    )
+                audio_encrypted_len = fileobj.seek(-(stag_len + 8), 2)
+                stag = QMCv2STag.from_bytes(fileobj.read(stag_len))
+                song_id = stag.song_id
+                song_mid = stag.song_mid
+                unknown_value1 = stag.unknown_value1
+                target_master_key = master_key
+                fileobj.seek(0, 0)
+                initial_bytes = fileobj.read(audio_encrypted_len)
+            else:
+                if simple_key is None:
+                    raise ValueError("'simple_key' is required for QMCv2 file master key decryption")
+                if tail_data == b'QTag':
+                    fileobj.seek(-8, 2)
+                    qtag_len = int.from_bytes(fileobj.read(4), 'big')
+                    if qtag_len + 8 > fileobj_endpos:
+                        raise CrypterCreatingError(
+                            f'{fileobj} is not a valid QMCv2 file: '
+                            f'QMCv2 QTag data length ({qtag_len + 8}) '
+                            f'is greater than file length ({fileobj_endpos})'
+                        )
+                    audio_encrypted_len = fileobj.seek(-(qtag_len + 8), 2)
+                    qtag = QMCv2QTag.from_bytes(fileobj.read(qtag_len))
+                    master_key_encrypted_b64encoded = qtag.master_key_encrypted_b64encoded
+                    song_id = qtag.song_id
+                    unknown_value1 = qtag.unknown_value1
+                    target_master_key = master_key
+                    if target_master_key is None:
+                        target_master_key = QMCv2KeyEncryptV1(simple_key).decrypt(
+                            b64decode(master_key_encrypted_b64encoded)
+                        )
+                    fileobj.seek(0, 0)
+                    initial_bytes = fileobj.read(audio_encrypted_len)
+                else:
+                    master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
+                    if master_key_encrypted_b64encoded_len + 4 > fileobj_endpos:
+                        raise CrypterCreatingError(
+                            f'{fileobj} is not a valid QMCv2 file: '
+                            f'QMCv2 QTag data length ({master_key_encrypted_b64encoded_len + 4}) '
+                            f'is greater than file length ({fileobj_endpos})'
+                        )
+                    audio_encrypted_len = fileobj.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
+                    master_key_encrypted_b64encoded = fileobj.read(master_key_encrypted_b64encoded_len)
+                    target_master_key = master_key
+                    if target_master_key is None:
+                        master_key_encrypted = b64decode(master_key_encrypted_b64encoded, validate=False)
+                        if master_key_encrypted.startswith(b'QQMusic EncV2,Key:'):
+                            missing_mix_key_msg = '{} is required for QMCv2 file ' \
+                                                  'with master key encryption V2 decryption'
+                            missed_mix_keys = None
+                            if mix_key1 is None and mix_key2 is None:
+                                missed_mix_keys = "'mix_key1' and 'mix_key2'"
+                            elif mix_key1 is None:
+                                missed_mix_keys = "'mix_key1'"
+                            elif mix_key2 is None:
+                                missed_mix_keys = "'mix_key2'"
+                            if missed_mix_keys:
+                                raise ValueError(missing_mix_key_msg.format(missed_mix_keys))
+                            target_master_key = QMCv2KeyEncryptV2(
+                                simple_key,
+                                mix_key1,
+                                mix_key2
+                            ).decrypt(master_key_encrypted[18:])
+                        else:
+                            target_master_key = QMCv2KeyEncryptV1(simple_key).decrypt(master_key_encrypted)
+                        # raise CrypterCreatingError(
+                        #     f'{fileobj} is not a valid QMCv2 file: '
+                        #     f'cannot find the master key in file'
+                        # )
+
+                    fileobj.seek(0, 0)
+                    initial_bytes = fileobj.read(audio_encrypted_len)
+
+            if len(target_master_key) == 128:
+                cipher = Mask128WithNewSkel(target_master_key)
+                warnings.warn(CrypterCreatingWarning(
+                    'maskey length is 128, most likely obtained by other means, '
+                    'such as known plaintext attack. '
+                    'Unable to recover and save the original master key from this key.'
+                )
+                )
+            elif len(target_master_key) == 256:
+                cipher = Mask128WithNewSkel.from_qmcv2_key256(target_master_key)
+            elif len(target_master_key) == 512:
+                cipher = HardenedRC4WithNewSkel(target_master_key)
+            else:
+                raise CrypterCreatingError(
+                    'invalid master key length: should be 128 (unrecommend), 256 or 512, '
+                    f'not {len(target_master_key)}'
+                )
+
+            return cls(cipher,
+                       initial_bytes,
+                       simple_key=simple_key,
+                       mix_key1=mix_key1,
+                       mix_key2=mix_key2,
+                       song_id=song_id,
+                       song_mid=song_mid,
+                       unknown_value1=unknown_value1
+                       )
+
+        if simple_key is not None:
+            simple_key = tobytes(simple_key)
+        if mix_key1 is not None:
+            mix_key1 = tobytes(mix_key1)
+        if mix_key2 is not None:
+            mix_key2 = tobytes(mix_key2)
+        if master_key is not None:
+            master_key = tobytes(master_key)
+
+        if is_filepath(qmcv2_filething):
+            with open(qmcv2_filething, mode='rb') as qmcv2_fileobj:
+                instance = operation(qmcv2_fileobj)
+        else:
+            qmcv2_fileobj = verify_fileobj(qmcv2_filething, 'binary',
+                                           verify_readable=True,
+                                           verify_seekable=True
+                                           )
+            instance = operation(qmcv2_fileobj)
+
+        instance._name = getattr(qmcv2_fileobj, 'name', None)
+
+        return instance
+
+    def to_file(self,
+                qmcv2_filething: FilePath | IO[bytes] = None, /,
+                tag_type: Literal['qtag', 'stag'] = None,
+                simple_key: BytesLike = None,
+                master_key_enc_ver: IntegerLike = 1,
+                mix_key1: BytesLike = None,
+                mix_key2: BytesLike = None
+                ) -> None:
+        def operation(fileobj: IO[bytes]) -> None:
+            if tag_type == 'stag':
+                warnings.warn(CrypterSavingWarning(
+                    'the STag embedded in the file does not contain the master key. '
+                    'You need to remember the master key yourself. '
+                    "Access the attribute 'self.master_key' to get the master key."
+                )
+                )
+                fileobj.write(self.getvalue(nocryptlayer=True))
+                fileobj.write(self.stag.to_bytes(with_tail=True))
+            elif tag_type == 'qtag':
+                if self.qtag is None:
+                    raise CrypterCreatingError("unable to save the file: cannot generate QTag")
+                fileobj.write(self.getvalue(nocryptlayer=True))
+                fileobj.write(self.qtag.to_bytes(with_tail=True))
+            elif tag_type is None:
+                target_simple_key = simple_key
+                if target_simple_key is None:
+                    if self.simple_key is None:
+                        raise CrypterSavingError(
+                            "argument 'simple_key' and attribute self.simple_key is not available, "
+                            'but it is required for the master key encryption'
+                        )
+                    target_simple_key = self.simple_key
+                if len(self.master_key) == 128:
+                    raise CrypterSavingError(
+                        'master key is not available: '
+                        'maskey length is 128, most likely obtained by other means, '
+                        'such as known plaintext attack. '
+                        'Unable to recover the original master key from this key.'
+                    )
+                master_key = self.master_key
+                if master_key_enc_ver == 1:
+                    master_key_encrypted = QMCv2KeyEncryptV1(target_simple_key).encrypt(master_key)
+                elif master_key_enc_ver == 2:
+                    missing_mix_key_msg = '{names} not available, but {appell} required for ' \
+                                          'the master key encryption V2 encryption'
+                    missed_mix_keys_appell = {}
+                    target_mix_key1 = mix_key1
+                    if target_mix_key1 is None:
+                        target_mix_key1 = self.mix_key1
+                    target_mix_key2 = mix_key2
+                    if target_mix_key2 is None:
+                        target_mix_key2 = self.mix_key2
+                    if target_mix_key1 is None and target_mix_key2 is None:
+                        missed_mix_keys_appell['names'] = \
+                            "argument 'mix_key1' and attribute self.mix_key1, " \
+                            "argument 'mix_key2' and attribute self.mix_key2 are"
+                        missed_mix_keys_appell['appell'] = 'they are'
+                    elif target_mix_key1 is None or target_mix_key2 is None:
+                        missed_mix_keys_appell['appell'] = 'it is'
+                        if target_mix_key1 is None:
+                            missed_mix_keys_appell['names'] = \
+                                "argument 'mix_key1' and attribute self.mix_key1 is"
+                        elif target_mix_key2 is None:
+                            missed_mix_keys_appell['names'] = \
+                                "argument 'mix_key2' and attribute self.mix_key2 is"
+                    print(missed_mix_keys_appell)
+                    if missed_mix_keys_appell:
+                        raise CrypterSavingError(
+                            missing_mix_key_msg.format_map(missed_mix_keys_appell)
+                        )
+                    master_key_encrypted = b'QQMusic EncV2,Key:' + QMCv2KeyEncryptV2(
+                        target_simple_key, target_mix_key1, target_mix_key2
+                    ).encrypt(master_key)
+                else:
+                    raise ValueError("argument 'master_key_enc_ver' must be 1 or 2, "
+                                     f"not {master_key_enc_ver}"
+                                     )
+                master_key_encrypted_b64encoded = b64encode(master_key_encrypted)
+                master_key_encrypted_b64encoded_len = len(master_key_encrypted_b64encoded)
+                fileobj.write(self.getvalue(nocryptlayer=True))
+                fileobj.write(master_key_encrypted_b64encoded)
+                fileobj.write(master_key_encrypted_b64encoded_len.to_bytes(4, 'little'))
+            elif isinstance(tag_type, str):
+                raise ValueError("argument 'tag_type' must be 'qtag', 'stag' or None, "
+                                 f"not {tag_type}"
+                                 )
+            else:
+                raise TypeError(f"argument 'tag_type' must be str or None, "
+                                f"not {type(tag_type).__name__}"
+                                )
+
+        master_key_enc_ver = toint_nofloat(master_key_enc_ver)
+        if simple_key is not None:
+            simple_key = tobytes(simple_key)
+        if mix_key1 is not None:
+            mix_key1 = tobytes(mix_key1)
+        if mix_key2 is not None:
+            mix_key2 = tobytes(mix_key2)
+
+        if is_filepath(qmcv2_filething):
+            with open(qmcv2_filething, mode='wb') as qmcv2_fileobj:
+                operation(qmcv2_fileobj)
+        else:
+            qmcv2_fileobj = verify_fileobj(qmcv2_filething, 'binary',
+                                           verify_writable=True
+                                           )
+            operation(qmcv2_fileobj)
