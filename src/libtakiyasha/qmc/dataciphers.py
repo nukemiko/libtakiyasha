@@ -11,8 +11,10 @@ from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
 
 __all__ = [
+    'HardenedRC4',
+    'HardenedRC4WithNewSkel',
     'Mask128',
-    'HardenedRC4'
+    'Mask128WithNewSkel'
 ]
 
 
