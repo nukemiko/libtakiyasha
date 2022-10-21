@@ -23,7 +23,7 @@ __all__ = [
     'StreamedAESWithModeECB',
     'TEAWithModeECB',
     'TencentTEAWithModeCBC',
-    'RC4'
+    'ARC4'
 ]
 
 rand = partial(srandbelow, 256)
@@ -348,7 +348,7 @@ class TencentTEAWithModeCBC(CipherSkel):
         return bytes(out_buf)
 
 
-class RC4(StreamCipherSkel):
+class ARC4(StreamCipherSkel):
     @property
     def master_key(self) -> bytes:
         return self._key

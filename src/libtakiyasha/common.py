@@ -13,219 +13,71 @@ try:
 except ImportError:
     import _pyio as io
 
-from .typedefs import IntegerLike, BytesLike, Cipher, WritableBuffer
-from .typeutils import verify_cipher, tobytes, toint_nofloat
+from .typedefs import IntegerLike, BytesLike, WritableBuffer
+from .typeutils import tobytes, toint_nofloat
 
 __all__ = [
-    'BytesIOWithTransparentCryptLayer',
     'CipherSkel',
     'StreamCipherSkel',
     'CryptLayerWrappedIOSkel'
 ]
 
 
-# class CipherSkel:
-#     """为 Cipher 类提供的框架，本身没有任何实际功能。"""
-# 
-#     @ClassInstanceProperty
-#     def offset_related(self) -> bool:
-#         """此 Cipher 的加密/解密是否依赖于根据输入数据在文件中的具体位置。
-# 
-#         如果此属性为假值，那么 ``self.encrypt()`` 和 ``self.decrypt()``
-#         的 ``offset`` 参数可能会被忽略。
-#         """
-#         raise NotImplementedError
-# 
-#     @property
-#     def keys(self) -> list[str]:
-#         """一个字典，包括所有用到的密钥在此 Cipher 中的属性名称。
-# 
-#         可以用 ``getattr()`` 通过这里的名称获取到具体的密钥。
-#         """
-#         raise NotImplementedError
-# 
-#     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-#         """加密 ``plaindata`` 并返回加密结果。
-# 
-#         位置参数 ``offset`` 用于指定 ``plaindata`` 在文件中的位置，从而进行针对性的加密。
-# 
-#         如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
-#         """
-#         raise NotImplementedError
-# 
-#     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-#         """解密 ``cipherdata`` 并返回加密结果。
-# 
-#         位置参数 ``offset`` 用于指定 ``cipherdata`` 在文件中的位置，从而进行针对性的解密。
-# 
-#         如果 ``self.offset_related`` 为假值，``offset`` 的值可能会被忽略。
-#         """
-#         raise NotImplementedError
-
-
-class BytesIOWithTransparentCryptLayer(io.BytesIO):
-    """一个基于 BytesIO 的透明加密 IO 类实现，
-    所有的读写操作都将通过一个透明加密层进行。
-    """
-
-    @property
-    def cipher(self):
-        """当前对象使用的 Cipher。"""
-        return self._cipher
-
-    @property
-    def name(self) -> str | None:
-        """一个文件路径，指向当前对象中的数据来源。
-
-        如果当前对象中的数据来自另一个文件对象，且这个文件对象的属性 ``name``
-        为 ``None`` 或不存在，那么访问此属性也会得到 ``None``。
-        """
-        return getattr(self, '_name', None)
-
-    @property
-    def master_key(self) -> bytes:
-        raise NotImplementedError
-
-    def __init__(self, cipher: Cipher, /, initial_data: BytesLike = b''):
-        """一个基于 BytesIO 的透明加密 IO 类实现，
-        所有的读写操作都将通过一个透明加密层进行。
-
-        必须提供一个 Cipher 对象作为第一个位置参数。
-
-        Args:
-            cipher: 加密/解密所需的 Cipher 对象
-            initial_data: 包含初始已加密数据的类字节对象
-        """
-        super(BytesIOWithTransparentCryptLayer, self).__init__(tobytes(initial_data))
-
-        self._cipher = verify_cipher(cipher)
-
-    def getvalue(self, nocryptlayer: bool = False) -> bytes:
-        """获取对象内部缓冲区里的所有数据。
-
-        获取到的数据会在返回之前解密，但如果提供了参数
-        ``nocryptlayer=True``，则会返回原始的加密数据。"""
-        value = super(BytesIOWithTransparentCryptLayer, self).getvalue()
-        if nocryptlayer:
-            return value
-        else:
-            return self._cipher.decrypt(value)
-
-    def getbuffer(self, nocryptlayer: bool = False) -> memoryview:
-        """获取与对象内部缓冲区相对应的可读写 memoryview。
-
-        此方法与其他方法不同：由于技术限制，无法为返回的 memoryview
-        添加透明加密层。因此，除非提供参数 ``nocryptlayer=True``，否则会触发
-        ``NotImplementedError``。
-        """
-        memview = super(BytesIOWithTransparentCryptLayer, self).getbuffer()
-        if nocryptlayer:
-            return memview
-        else:
-            raise NotImplementedError('memoryview with transparent crypt layer support '
-                                      'is not implemented'
-                                      )
-
-    def read(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
-        """读取、解密并返回最多 ``size`` 大小的数据。
-
-        如果位置参数 ``size`` 被忽略，或者为 ``None``、负数，
-        则从当前流的位置开始，读取、解密并返回到 EOF 的所有数据。
-
-        如果当前流的位置已经位于 EOF，或没有可用数据，则返回空字节。
-
-        如果提供参数 ``nocryptlayer=True``，将返回原始的加密数据。
-        """
-        if size is None:
-            size = -1
-        else:
-            size = toint_nofloat(size)
-        if nocryptlayer:
-            return super(BytesIOWithTransparentCryptLayer, self).read(size)
-        else:
-            curpos = self.tell()
-            return self._cipher.decrypt(
-                super(BytesIOWithTransparentCryptLayer, self).read(size), curpos
-            )
-
-    def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
-        """读取、解密并返回最多 ``size`` 大小的数据。
-
-        如果位置参数 ``size`` 被忽略，或者为 ``None``、负数，
-        则从当前流的位置开始，读取、解密并返回到 EOF 的所有数据。
-
-        如果当前流的位置已经位于 EOF，或没有可用数据，则返回空字节。
-
-        如果提供参数 ``nocryptlayer=True``，将返回原始的加密数据。
-        """
-        return self.read(size, nocryptlayer)
-
-    def write(self, data: BytesLike, /, nocryptlayer: bool = False) -> int:
-        """加密并写入数据。
-
-        如果提供参数 ``nocryptlayer=True``，将会跳过加密过程，直接写入数据。
-        如果错误使用此参数，缓冲区的数据可能会受到破坏。
-        """
-        data = tobytes(data)
-        if nocryptlayer:
-            return super(BytesIOWithTransparentCryptLayer, self).write(data)
-        else:
-            curpos = self.tell()
-            return super(BytesIOWithTransparentCryptLayer, self).write(
-                self._cipher.encrypt(data, curpos)
-            )
-
-    def seek(self, offset: IntegerLike, whence: IntegerLike = 0) -> int:
-        """改变流的位置，到相对于 ``whence`` 指示位置的字节偏移量 ``offset``：
-            - ``whence=0`` - 流的起点（默认值），``offset`` 应当大于等于 0
-            - ``whence=1`` - 当前流的位置，``offset`` 可能小于 0
-            - ``whence=2`` - 流的终点，``offset`` 通常都小于 0
-        之后返回新的绝对位置。
-        """
-        return super(BytesIOWithTransparentCryptLayer, self).seek(
-            toint_nofloat(offset), toint_nofloat(whence)
-        )
-
-    def truncate(self, size: IntegerLike | None = None, /) -> int:
-        """将流截断到最多 ``size`` 大小。
-
-        如果 ``size`` 被忽略或为 ``None``，默认为当前流的位置（可由 ``tell()`` 获得）。
-        当前流位置不变。
-
-        返回新的流大小。
-        """
-        if size is None:
-            size = self.tell()
-        else:
-            size = toint_nofloat(size)
-
-        return super(BytesIOWithTransparentCryptLayer, self).truncate(size)
-
-
 class CipherSkel(metaclass=ABCMeta):
+    """适用于一般加密算法的框架类。子类必须实现 ``encrypt()`` 和 ``decrypt()`` 方法。"""
+
     @abstractmethod
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
-        """加密 ``plaindata`` 并返回加密结果。"""
+        """加密明文 ``plaindata`` 并返回加密结果。
+
+        Args:
+            plaindata: 要加密的明文
+        """
         raise NotImplementedError
 
     @abstractmethod
     def decrypt(self, cipherdata: BytesLike, /) -> bytes:
-        """解密 ``cipherdata`` 并返回加密结果。"""
+        """解密密文 ``cipherdata`` 并返回解密结果。
+
+        Args:
+            cipherdata: 要解密的密文
+        """
         raise NotImplementedError
 
 
 class StreamCipherSkel(metaclass=ABCMeta):
+    """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 方法。"""
+
     @abstractmethod
     def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        """返回一个生成器对象，对其进行迭代，即可得到从起始点
+        ``offset`` 开始，持续一定长度 ``length`` 的密钥流。
+
+        Args:
+            offset: 密钥流的起始点，不应为负数
+            length: 密钥流的长度，不应为负数
+        """
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        """加密明文 ``plaindata`` 并返回加密结果。
+
+        Args:
+            plaindata: 要加密的明文
+            offset: 明文在文件中的位置（偏移量），不应为负数
+        """
         plaindata = tobytes(plaindata)
         offset = toint_nofloat(offset)
 
         return bytestrxor(plaindata, self.keystream(offset, len(plaindata)))
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        """解密密文 ``cipherdata`` 并返回解密结果。
+
+        Args:
+            cipherdata: 要解密的密文
+            offset: 密文在文件中的位置（偏移量），不应为负数
+        """
         cipherdata = tobytes(cipherdata)
         offset = toint_nofloat(offset)
 
@@ -233,6 +85,25 @@ class StreamCipherSkel(metaclass=ABCMeta):
 
 
 class CryptLayerWrappedIOSkel(io.BytesIO):
+    """基于 BytesIO 的透明加密二进制流。
+
+    所有读写相关方法都会经过透明加密层处理：
+    读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+    调用读写相关方法时，附加参数 ``nocryptlayer=True``
+    可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+    ``__init__()`` 方法的第一个位置参数 ``cipher`` 必须拥有
+    ``encrypt()``、``decrypt()`` 和 ``keystream()`` 方法；
+    第二个参数 ``initial_bytes`` 会被用于对象内置缓冲区的初始数据。
+
+    基于本类的子类可能拥有自己的构造器方法或函数，而不是直接调用
+    ``__init__()``；详情请参考该类的文档字符串。
+
+    本类和基于本类的子类，同时兼容 ``IO[bytes]``
+    和 ``typedefs.StreamCipherBasedCryptedIOProto`` 类型。
+    """
+
     @property
     def name(self) -> str | None:
         if hasattr(self, '_name'):
@@ -241,6 +112,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
     @property
     def iter_nocryptlayer(self) -> bool:
+        """迭代当前对象时，是否需要绕过透明加密层。默认为 ``False``。"""
         return self._iter_nocryptlayer
 
     @iter_nocryptlayer.setter
@@ -249,15 +121,16 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
     @property
     def iter_mode(self) -> Literal['block', 'line']:
+        """迭代的模式，只能设置为 ``block`` 或 ``line``：
+
+        - ``block``（默认值）- 以块为单位进行迭代：每次迭代时，返回等长的“一块”数据。
+            - 每次迭代返回的数据长度由 ``self.iter_block_size`` 决定。
+        - ``line`` - 以一行为单位进行迭代：每次迭代时，返回的数据都以 ``b'\\n'`` 结尾。
+            - 此模式会极大降低迭代的速度，不推荐使用。
+
+        尝试设置为其他值会触发 ``ValueError`` 或 ``TypeError``。
+        """
         return self._iter_mode
-
-    @property
-    def iter_block_size(self) -> int:
-        return self._iter_block_size
-
-    @iter_block_size.setter
-    def iter_block_size(self, value: IntegerLike) -> None:
-        self._iter_block_size = toint_nofloat(value)
 
     @iter_mode.setter
     def iter_mode(self, value: Literal['block', 'line']) -> None:
@@ -268,7 +141,42 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
         else:
             raise TypeError(f"attribute 'iter_mode' must be str, not {type(value).__name__}")
 
+    @property
+    def iter_block_size(self) -> int:
+        """以块为单位进行迭代时，每次迭代返回的数据长度。
+
+        如果尝试设置为负数，会触发 ``ValueError``。
+
+        本属性不会影响以一行为单位进行的迭代。
+        """
+        return self._iter_block_size
+
+    @iter_block_size.setter
+    def iter_block_size(self, value: IntegerLike) -> None:
+        size = toint_nofloat(value)
+        if size < 0:
+            raise ValueError("attribute 'iter_block_size' cannot be a negative integer")
+        self._iter_block_size = size
+
     def __init__(self, cipher, /, initial_bytes: BytesLike = b'') -> None:
+        """基于 BytesIO 的透明加密二进制流。
+
+        所有读写相关方法都会经过透明加密层处理：
+        读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+        调用读写相关方法时，附加参数 ``nocryptlayer=True``
+        可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+        ``__init__()`` 方法的第一个位置参数 ``cipher`` 必须拥有
+        ``encrypt()``、``decrypt()`` 和 ``keystream()`` 方法；
+        第二个参数 ``initial_bytes`` 会被用于对象内置缓冲区的初始数据。
+
+        基于本类的子类可能拥有自己的构造器方法或函数，而不是直接调用
+        ``__init__()``；详情请参考该类的文档字符串。
+
+        本类和基于本类的子类，同时兼容 ``IO[bytes]``
+        和 ``typedefs.StreamCipherBasedCryptedIOProto`` 类型。
+        """
         super().__init__(tobytes(initial_bytes))
 
         for method_name in 'keystream', 'encrypt', 'decrypt':
@@ -405,6 +313,9 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
     def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
         return self.read(size, nocryptlayer)
+
+    def readinto1(self, buffer: WritableBuffer, /, nocryptlayer: bool = False) -> int:
+        return self.readinto(buffer, nocryptlayer)
 
     def readblock(self,
                   size: IntegerLike | None = -1, /,

@@ -4,7 +4,7 @@ from __future__ import annotations
 from threading import RLock
 from typing import Any, Callable, IO, Literal, Type
 
-from .typedefs import BytesLike, Cipher, IntegerLike, PT, RT, T
+from .typedefs import BytesLike, IntegerLike, PT, RT, T
 
 __all__ = [
     'ClassInstanceProperty',
@@ -13,8 +13,7 @@ __all__ = [
     'tobytearray',
     'toint_nofloat',
     'is_filepath',
-    'verify_fileobj',
-    'verify_cipher'
+    'verify_fileobj'
 ]
 
 
@@ -239,23 +238,3 @@ def verify_fileobj(fileobj: IO[str | bytes],
             raise ValueError(f"cannot write to file object {repr(fileobj)}") from exc
 
     return fileobj
-
-
-def verify_cipher(obj) -> Cipher:
-    try:
-        offset_related: bool = getattr(obj, 'offset_related')
-        encrypt: Callable[[BytesLike, int], bytes] | Callable[[BytesLike, Any], bytes] = getattr(obj, 'encrypt')
-        decrypt: Callable[[BytesLike, int], bytes] | Callable[[BytesLike, Any], bytes] = getattr(obj, 'decrypt')
-    except AttributeError as exc:
-        raise TypeError(f"{repr(obj)} is not a valid Cipher object") from exc
-    else:
-        if not isinstance(offset_related, bool):
-            raise AttributeError(f"attribute 'offset_related' must be bool, "
-                                 f"not {type(offset_related).__name__}"
-                                 )
-        if not callable(encrypt):
-            raise AttributeError(f"attribute 'encrypt' must be callable")
-        if not callable(decrypt):
-            raise AttributeError(f"attribute 'decrypt' must be callable")
-
-        return obj
