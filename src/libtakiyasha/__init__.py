@@ -9,6 +9,6 @@ from .pkgver import progname, version
 from .qmc import QMCv1, QMCv2, QMCv2QTag, QMCv2STag
 from .qmc.dataciphers import HardenedRC4, Mask128
 from .qmc.keyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2, make_simple_key
-from .stdciphers import ARC4, StreamedAESWithModeECB, TEAWithModeECB, TencentTEAWithModeCBC
+from .stdciphers import ARC4, StreamedAESWithModeECB, TEAWithModeECB, TarsCppTCTEAWithModeCBC
 from .typedefs import CipherProto, StreamCipherBasedCryptedIOProto, StreamCipherProto
 from .warns import CipherDecryptingWarning, CipherEncryptingWarning, CrypterCreatingWarning, CrypterSavingWarning, LibTakiyashaWarning
