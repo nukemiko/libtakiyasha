@@ -22,7 +22,7 @@ from .typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 __all__ = [
     'StreamedAESWithModeECB',
     'TEAWithModeECB',
-    'TencentTEAWithModeCBC',
+    'TarsCppTCTEAWithModeCBC',
     'ARC4'
 ]
 
@@ -125,7 +125,7 @@ class TEAWithModeECB(CipherSkel):
         return v0.to_bytes(4, 'big') + v1.to_bytes(4, 'big')
 
 
-class TencentTEAWithModeCBC(CipherSkel):
+class TarsCppTCTEAWithModeCBC(CipherSkel):
     @CachedClassInstanceProperty
     def blocksize(self) -> int:
         return 8
@@ -158,7 +158,8 @@ class TencentTEAWithModeCBC(CipherSkel):
                  rounds: IntegerLike = 64,
                  magic_number: IntegerLike = 0x9e3779b9,
                  ) -> None:
-        """
+        """TarsCpp 的 util/tc_tea 的完整实现。
+
         Args:
             key: 密钥，长度必须等于 16
             rounds: 加/解密的轮转次数，必须为偶数
@@ -179,6 +180,16 @@ class TencentTEAWithModeCBC(CipherSkel):
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         # 根据 plaindata 长度计算 pad_len，最小长度必须为 8 的整数倍
         plaindata = tobytes(plaindata)
+        if len(plaindata) < self.blocksize:
+            raise ValueError(
+                f'invalid plaindata length: should be greater than '
+                f'{self.blocksize}, not {len(plaindata)}'
+            )
+        if len(plaindata) % self.blocksize != 0:
+            raise ValueError(
+                f'invalid plaindata length ({len(plaindata)}): '
+                f'not a integer multiple of {self.blocksize}'
+            )
 
         pad_salt_body_zero_len = (len(plaindata) + self.salt_len + self.zero_len + 1)
         pad_len = pad_salt_body_zero_len % self.blocksize
@@ -283,20 +294,24 @@ class TencentTEAWithModeCBC(CipherSkel):
                 ) -> bytes:
         cipherdata = tobytes(cipherdata)
 
-        if len(cipherdata) % self.blocksize != 0:
-            raise ValueError(f"encrypted key size ({len(cipherdata)}) "
-                             f"is not a multiple of the block size ({self.blocksize})"
-                             )
         if len(cipherdata) < self.blocksize * 2:
-            raise ValueError(f"encrypted keydata length is too short: "
-                             f"should be >= {self.blocksize * 2}, got {len(cipherdata)}"
-                             )
+            raise ValueError(
+                f'invalid cipherdata length: should be greater than '
+                f'{self.blocksize * 2}, not {len(cipherdata)}'
+            )
+        if len(cipherdata) % self.blocksize != 0:
+            raise ValueError(
+                f'invalid cipherdata length ({len(cipherdata)}): '
+                f'not a integer multiple of {self.blocksize}'
+            )
 
-        dest_buf = bytearray(self._lower_level_tea_cipher.decrypt(cipherdata))
+        dest_buf = bytearray(self._lower_level_tea_cipher.decrypt(cipherdata[:8]))
         pad_len = dest_buf[0] & 0x7
         out_buf_len = len(cipherdata) - pad_len - self.salt_len - self.zero_len - 1
-        if pad_len + self.salt_len != 8:
-            raise CipherDecryptingError(f'invalid pad length {pad_len}')
+        if out_buf_len < 0:
+            raise CipherDecryptingError(
+                'estimated plaindata length is less than 0'
+            )
         out_buf = bytearray(out_buf_len)
 
         iv_previous = bytearray(8)
