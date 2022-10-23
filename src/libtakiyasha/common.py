@@ -240,9 +240,13 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
     @lru_cache
     def __repr__(self) -> str:
-        repr_strings = ['<', f'{type(self).__module__}.{type(self).__name__}', f' at {hex(id(self))}']
+        repr_strings = [
+            f'<{type(self).__module__}.{type(self).__name__} object',
+            f' at {hex(id(self))}',
+            f', cipher={repr(self._cipher)}'
+        ]
         if self.name is not None:
-            repr_strings.append(f" from '{self.name}'")
+            repr_strings.append(f", from '{self.name}'")
         repr_strings.append('>')
 
         return ''.join(repr_strings)
