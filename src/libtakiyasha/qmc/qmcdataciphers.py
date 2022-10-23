@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Generator
 
-from .consts import KEY256_MAPPING
+from .qmcconsts import KEY256_MAPPING
 from ..common import StreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
