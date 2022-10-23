@@ -98,7 +98,7 @@ class CloudMusicIdentifier:
         >>> mutagen_flac.update(ncm_tag.to_mutagen_style_dict())
         >>>
         """
-        comment = self.to_ncm_163key(with_xor=False)
+        comment = self.to_ncm_163key(with_xor=False).decode('utf-8')
         if not isinstance(self.format, str):
             raise TypeError(f"'self.format' must be str, not {type(self.format)}")
         elif self.format.lower() == 'flac':
