@@ -400,9 +400,11 @@ class ARC4(StreamCipherSkel):
 
     def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
         offset = toint_nofloat(offset)
-        if offset < 0:
-            raise ValueError(f"offset must be poritive integer or 0, not {offset}")
         length = toint_nofloat(length)
+        if offset < 0:
+            raise ValueError("first argument 'offset' must be a non-negative integer")
+        if length < 0:
+            raise ValueError("second argument 'length' must be a non-negative integer")
 
         for i in range(offset, offset + length):
             yield self._meta_keystream[i % 256]
