@@ -1,144 +1,91 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import IO
+from typing import IO, Literal
 
-from .kgmvprdataciphers import (KGMEncryptionAlgorithm,
-                                KGMEncryptionAlgorithmWithCachedMask,
-                                VPREnceyptionAlgorithm,
-                                VPREncryptionAlgorithmWithCachedMask
-                                )
+from .kgmvprdataciphers import KGMorVPREncryptAlgorithm
 from ..common import CryptLayerWrappedIOSkel
+from ..exceptions import CrypterCreatingError
 from ..typedefs import BytesLike, FilePath
-from ..typeutils import is_filepath, tobytes, verify_fileobj
+from ..typeutils import is_filepath, verify_fileobj
 
-__all__ = ['KGM', 'VPR']
+__all__ = ['KGMorVPR']
 
 
-class KGM(CryptLayerWrappedIOSkel):
+class KGMorVPR(CryptLayerWrappedIOSkel):
     @property
-    def cipher(self) -> KGMEncryptionAlgorithm | KGMEncryptionAlgorithmWithCachedMask:
+    def cipher(self) -> KGMorVPREncryptAlgorithm:
         return self._cipher
 
     @property
     def master_key(self) -> bytes:
-        return self.cipher.file_key
+        return self.cipher.master_key
+
+    @property
+    def vpr_key(self) -> bytes | None:
+        return self._cipher.vpr_key
+
+    @property
+    def subtype(self):
+        return 'KGM' if self.vpr_key is None else 'VPR'
+
+    def __init__(self, cipher: KGMorVPREncryptAlgorithm, /, initial_bytes: BytesLike = b'') -> None:
+        super().__init__(cipher, initial_bytes)
 
     @classmethod
-    def _from_file_operation(cls,
-                             fileobj: IO[bytes],
-                             table1: bytes,
-                             table2: bytes,
-                             tablev2: bytes
-                             ):
-        header = fileobj.read(60)
-        file_key = header[28:44] + b'\x00'
-        header_len = int.from_bytes(header[16:20], 'little')
-
-        fileobj.seek(header_len, 0)
-
-        initial_bytes = fileobj.read()
-
-        ret = cls(KGMEncryptionAlgorithm(file_key, table1, table2, tablev2), initial_bytes)
-        ret._file_key = file_key
-
-        return ret
+    def new(cls) -> KGMorVPR:
+        raise NotImplementedError('coming soon')
 
     @classmethod
     def from_file(cls,
-                  kgm_filething: FilePath | IO[bytes], /,
+                  kgm_vpr_filething: FilePath | IO[bytes], /,
                   table1: BytesLike,
                   table2: BytesLike,
-                  tablev2: BytesLike
-                  ) -> KGM:
-        table1 = tobytes(table1)
-        table2 = tobytes(table2)
-        tablev2 = tobytes(tablev2)
+                  tablev2: BytesLike,
+                  vpr_key: BytesLike = None,
+                  ) -> KGMorVPR:
+        def operation(fileobj: IO[bytes]) -> KGMorVPR:
+            fileobj_endpos = fileobj.seek(0, 2)
+            fileobj.seek(0, 0)
+            magicheader = fileobj.read(16)
+            if magicheader == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
+                subtype: Literal['KGM', 'VPR'] = 'VPR'
+                if vpr_key is None:
+                    raise ValueError(
+                        f"{repr(kgm_vpr_filething)} is a VPR file, but argument 'vpr_key' is missing"
+                    )
+            elif magicheader == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
+                subtype: Literal['KGM', 'VPR'] = 'KGM'
+            else:
+                raise ValueError(f"{repr(kgm_vpr_filething)} is not a KGM or VPR file")
+            header_len = int.from_bytes(fileobj.read(4), 'little')
+            if header_len > fileobj_endpos:
+                raise CrypterCreatingError(
+                    f"{repr(kgm_vpr_filething)} is not a valid {subtype} file: "
+                    f"header length ({header_len}) is greater than file size ({fileobj_endpos})"
+                )
+            fileobj.seek(28, 0)
+            master_key = fileobj.read(16) + b'\x00'
+            fileobj.seek(header_len, 0)
 
-        if is_filepath(kgm_filething):
-            with open(kgm_filething, mode='rb') as kgm_fileobj:
-                instance = cls._from_file_operation(kgm_fileobj, table1, table2, tablev2)
+            initial_bytes = fileobj.read()
+
+            cipher = KGMorVPREncryptAlgorithm(table1, table2, tablev2, master_key, vpr_key)
+            return cls(cipher, initial_bytes)
+
+        if is_filepath(kgm_vpr_filething):
+            with open(kgm_vpr_filething, mode='rb') as kgm_vpr_fileobj:
+                instance = operation(kgm_vpr_fileobj)
         else:
-            kgm_fileobj = verify_fileobj(kgm_filething, 'binary',
-                                         verify_readable=True,
-                                         verify_seekable=True
-                                         )
-            instance = cls._from_file_operation(kgm_fileobj, table1, table2, tablev2)
+            kgm_vpr_fileobj = verify_fileobj(kgm_vpr_filething, 'binary',
+                                             verify_readable=True,
+                                             verify_seekable=True
+                                             )
+            instance = operation(kgm_vpr_fileobj)
 
-        instance._name = getattr(kgm_fileobj, 'name', None)
+        instance._name = getattr(kgm_vpr_fileobj, 'name', None)
 
         return instance
 
-    def to_file(self, kgm_filething: FilePath | IO[bytes], /, **kwargs) -> None:
-        raise NotImplementedError
-
-    def new(self) -> KGM:
-        raise NotImplementedError
-
-
-class VPR(CryptLayerWrappedIOSkel):
-    @property
-    def cipher(self) -> VPREnceyptionAlgorithm | VPREnceyptionAlgorithm:
-        return self._cipher
-
-    @property
-    def master_key(self) -> bytes:
-        return self.cipher.file_key
-
-    @property
-    def vpr_key(self) -> bytes:
-        return self.cipher.vpr_key
-
-    @classmethod
-    def _from_file_operation(cls,
-                             fileobj: IO[bytes],
-                             vpr_key: bytes,
-                             table1: bytes,
-                             table2: bytes,
-                             tablev2: bytes
-                             ):
-        header = fileobj.read(60)
-        file_key = header[28:44] + b'\x00'
-        header_len = int.from_bytes(header[16:20], 'little')
-
-        fileobj.seek(header_len, 0)
-
-        initial_bytes = fileobj.read()
-
-        ret = cls(VPREnceyptionAlgorithm(vpr_key, file_key, table1, table2, tablev2), initial_bytes)
-        ret._file_key = file_key
-
-        return ret
-
-    @classmethod
-    def from_file(cls,
-                  vpr_filething: FilePath | IO[bytes], /,
-                  vpr_key: BytesLike,
-                  table1: BytesLike,
-                  table2: BytesLike,
-                  tablev2: BytesLike
-                  ) -> VPR:
-        vpr_key = tobytes(vpr_key)
-        table1 = tobytes(table1)
-        table2 = tobytes(table2)
-        tablev2 = tobytes(tablev2)
-
-        if is_filepath(vpr_filething):
-            with open(vpr_filething, mode='rb') as vpr_fileobj:
-                instance = cls._from_file_operation(vpr_fileobj, vpr_key, table1, table2, tablev2)
-        else:
-            vpr_fileobj = verify_fileobj(vpr_filething, 'binary',
-                                         verify_readable=True,
-                                         verify_seekable=True
-                                         )
-            instance = cls._from_file_operation(vpr_fileobj, vpr_key, table1, table2, tablev2)
-
-        instance._name = getattr(vpr_fileobj, 'name', None)
-
-        return instance
-
-    def to_file(self, vpr_filething: FilePath | IO[bytes], /, **kwargs) -> None:
-        raise NotImplementedError
-
-    def new(self) -> VPR:
-        raise NotImplementedError
+    def to_file(self, kgm_vpr_filething: FilePath | IO[bytes], /, **kwargs) -> None:
+        raise NotImplementedError('coming soon')

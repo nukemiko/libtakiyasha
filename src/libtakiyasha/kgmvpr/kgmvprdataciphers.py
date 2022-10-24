@@ -1,226 +1,127 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Generator
+from typing import Generator, TypedDict
 
+from .kgmmaskutils import make_maskstream, xor_half_lower_byte
 from .. import StreamCipherSkel
-from ..miscutils import bytestrxor
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
+from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 
-__all__ = [
-    'KGMEncryptionAlgorithm',
-    'KGMEncryptionAlgorithmWithCachedMask',
-    'VPREnceyptionAlgorithm',
-    'VPREncryptionAlgorithmWithCachedMask'
-]
+__all__ = ['KGMorVPRTables', 'KGMorVPREncryptAlgorithm']
 
 
-def xor_lower_helf_byte(b: int) -> int:
-    return b ^ ((b & 0xf) << 4)
+class KGMorVPRTables(TypedDict):
+    table1: bytes
+    table2: bytes
+    tablev2: bytes
 
 
-class KGMEncryptionAlgorithm(StreamCipherSkel):
+class KGMorVPREncryptAlgorithm(StreamCipherSkel):
+    @CachedClassInstanceProperty
+    def keysize(self) -> int:
+        return 17
+
     @CachedClassInstanceProperty
     def tablesize(self) -> int:
-        return 16 * 17
+        return 17 * 16
 
     @property
-    def table1(self) -> bytes:
-        return self._table1
+    def master_key(self) -> bytes:
+        return self._master_key
 
     @property
-    def table2(self) -> bytes:
-        return self._table2
+    def vpr_key(self) -> bytes | None:
+        return self._vpr_key
 
     @property
-    def tablev2(self) -> bytes:
-        return self._tablev2
-
-    @property
-    def file_key(self):
-        return self._file_key
+    def tables(self) -> KGMorVPRTables:
+        return {
+            'table1' : self._table1,
+            'table2' : self._table2,
+            'tablev2': self._tablev2
+        }
 
     def __init__(self,
-                 file_key: BytesLike,
                  table1: BytesLike,
                  table2: BytesLike,
-                 tablev2: BytesLike, /
+                 tablev2: BytesLike,
+                 master_key: BytesLike, /,
+                 vpr_key: BytesLike = None,
                  ) -> None:
         self._table1 = tobytes(table1)
         self._table2 = tobytes(table2)
         self._tablev2 = tobytes(tablev2)
-        self._file_key = tobytes(file_key)
 
-        if len(self._table1) != self.tablesize:
-            raise ValueError(
-                f"invalid length of 'table1': should be {self.tablesize}, not {len(self._table1)}"
-            )
-        if len(self._table2) != self.tablesize:
-            raise ValueError(
-                f"invalid length of 'table2': should be {self.tablesize}, not {len(self._table2)}"
-            )
-        if len(self._tablev2) != self.tablesize:
-            raise ValueError(
-                f"invalid length of 'tablev2': should be {self.tablesize}, not {len(self._tablev2)}"
-            )
+        for valname, val in [('table1', self._table1),
+                             ('table2', self._table2),
+                             ('tablev2', self._tablev2)]:
+            if len(val) != self.tablesize:
+                raise ValueError(
+                    f"invalid length of argument '{valname}': should be {self.tablesize}, not {len(val)}"
+                )
 
-    @classmethod
-    def generate_mask(cls,
-                      offset: IntegerLike,
-                      length: IntegerLike, /,
-                      table1: BytesLike,
-                      table2: BytesLike,
-                      tablev2: BytesLike
-                      ) -> Generator[int, None, None]:
-        tablesize: int = cls.tablesize
-
-        offset = toint_nofloat(offset)
-        length = toint_nofloat(length)
-        if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
-        if length < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
-        table1 = tobytes(table1)
-        table2 = tobytes(table2)
-        tablev2 = tobytes(tablev2)
-        if len(table1) != tablesize:
+        self._master_key = tobytes(master_key)
+        if len(self._master_key) != self.keysize:
             raise ValueError(
-                f"invalid length of 'table1': should be {tablesize}, not {len(table1)}"
+                f"invalid length of argument 'master_key': "
+                f"should be {self.keysize}, not {len(self._master_key)}"
             )
-        if len(table2) != tablesize:
-            raise ValueError(
-                f"invalid length of 'table2': should be {tablesize}, not {len(table2)}"
-            )
-        if len(tablev2) != tablesize:
-            raise ValueError(
-                f"invalid length of 'tablev2': should be {tablesize}, not {len(tablev2)}"
-            )
-
-        for idx in range(offset, offset + length):
-            idx_urs4 = idx >> 4
-            value = 0
-            while idx_urs4 >= 17:
-                value ^= table1[idx_urs4 % tablesize]
-                idx_urs4 >>= 4
-                value ^= table2[idx_urs4 % tablesize]
-                idx_urs4 >>= 4
-            yield value ^ tablev2[idx % tablesize]
+        if vpr_key is None:
+            self._vpr_key = None
+        else:
+            self._vpr_key = tobytes(vpr_key)
+            if len(self._vpr_key) != self.keysize:
+                raise ValueError(
+                    f"invalid length of argument 'vpr_key': "
+                    f"should be {self.keysize}, not {len(self._vpr_key)}"
+                )
 
     def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        raise NotImplementedError
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        file_key = self._file_key
+        master_key = self._master_key
+        vpr_key: bytes | None = self._vpr_key
+        keysize = self.keysize
 
         offset = toint_nofloat(offset)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
-        cipherdata = tobytearray(cipherdata)
-        plaindata = bytearray(len(cipherdata))
+            ValueError("second argument 'offset' must be a non-negative integer")
+        plaindata = tobytes(plaindata)
+        cipherdata_buf = bytearray(len(plaindata))
 
-        mask_byte_iterator = self.generate_mask(offset,
-                                                len(cipherdata),
-                                                self._table1,
-                                                self._table2,
-                                                self._tablev2
-                                                )
-        for idx, data_byte_peer in enumerate(zip(cipherdata, mask_byte_iterator)):
-            cipherdata_byte, mask_byte = data_byte_peer
-            plaindata[idx] = xor_lower_helf_byte(
-                cipherdata_byte ^ mask_byte ^ file_key[(idx + offset) % 17]
-            )
+        maskstream_iterator = make_maskstream(
+            offset, len(plaindata), self._table1, self._table2, self._tablev2
+        )
+        for idx, peered_byte in enumerate(zip(plaindata, maskstream_iterator)):
+            pdb, msb = peered_byte
+            if vpr_key is not None:
+                pdb ^= vpr_key[(idx + offset) % keysize]
+            cdb = xor_half_lower_byte(pdb) ^ msb ^ master_key[(idx + offset) % keysize]
+            cipherdata_buf[idx] = cdb
 
-        return bytes(plaindata)
-
-
-class KGMEncryptionAlgorithmWithCachedMask(StreamCipherSkel):
-    @property
-    def file_key(self) -> bytes:
-        return self._file_key
-
-    def __init__(self,
-                 file_key: BytesLike,
-                 mask_data: BytesLike
-                 ) -> None:
-        self._file_key = tobytes(file_key)
-        self._mask_data = tobytes(mask_data)
-
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        raise NotImplementedError
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        raise NotImplementedError
+        return tobytes(cipherdata_buf)
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        file_key = self._file_key
-        mask_data = self._mask_data
+        master_key = self._master_key
+        vpr_key: bytes | None = self._vpr_key
+        keysize = self.keysize
 
         offset = toint_nofloat(offset)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
-        cipherdata = tobytearray(cipherdata)
-        plaindata = bytearray(len(cipherdata))
+            ValueError("second argument 'offset' must be a non-negative integer")
+        cipherdata = tobytes(cipherdata)
+        plaindata_buf = bytearray(len(cipherdata))
 
-        for idx, data_byte_peer in enumerate(zip(cipherdata, mask_data)):
-            cipherdata_byte, mask_byte = data_byte_peer
-            plaindata[idx] = xor_lower_helf_byte(
-                cipherdata_byte ^ mask_byte ^ file_key[(idx + offset) % 17]
-            )
+        maskstream_iterator = make_maskstream(
+            offset, len(cipherdata), self._table1, self._table2, self._tablev2
+        )
+        for idx, peered_byte in enumerate(zip(cipherdata, maskstream_iterator)):
+            cdb, msb = peered_byte
+            pdb = xor_half_lower_byte(cdb ^ msb ^ master_key[(idx + offset) % keysize])
+            if vpr_key is not None:
+                pdb ^= vpr_key[(idx + offset) % keysize]
+            plaindata_buf[idx] = pdb
 
-        return bytes(plaindata)
-
-
-class VPREnceyptionAlgorithm(KGMEncryptionAlgorithm):
-    @property
-    def vpr_key(self):
-        return self._vpr_key
-
-    def __init__(self,
-                 vpr_key: BytesLike,
-                 file_key: BytesLike,
-                 table1: BytesLike,
-                 table2: BytesLike,
-                 tablev2: BytesLike, /
-                 ):
-        self._vpr_key = tobytes(vpr_key)
-        super().__init__(file_key, table1, table2, tablev2)
-
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        raise NotImplementedError
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        raise NotImplementedError
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        vpr_key = self._vpr_key
-
-        staged = super().decrypt(cipherdata, offset)
-
-        return bytestrxor(staged, bytes(vpr_key[(_ + offset) % 17] for _ in range(len(cipherdata))))
-
-
-class VPREncryptionAlgorithmWithCachedMask(KGMEncryptionAlgorithmWithCachedMask):
-    @property
-    def vpr_key(self):
-        return self._vpr_key
-
-    def __init__(self, vpr_key: BytesLike, file_key: BytesLike, mask_data: BytesLike):
-        self._vpr_key = tobytes(vpr_key)
-        super().__init__(file_key, mask_data)
-
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        raise NotImplementedError
-
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        raise NotImplementedError
-
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        vpr_key = self._vpr_key
-
-        staged = super().decrypt(cipherdata, offset)
-
-        return bytestrxor(staged, bytes(vpr_key[(_ + offset) % 17] for _ in range(len(cipherdata))))
+        return tobytes(plaindata_buf)
