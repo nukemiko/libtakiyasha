@@ -216,6 +216,10 @@ class HardenedRC4(StreamCipherSkel):
         pending = toint_nofloat(length)
         done = 0
         offset = toint_nofloat(offset)
+        if offset < 0:
+            raise ValueError("first argument 'offset' must be a non-negative integer")
+        if pending < 0:
+            raise ValueError("second argument 'length' must be a non-negative integer")
 
         def mark(p: int) -> None:
             nonlocal pending, done, offset
