@@ -4,10 +4,16 @@ from __future__ import annotations
 from typing import Generator
 
 from .. import StreamCipherSkel
+from ..miscutils import bytestrxor
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytearray, tobytes, toint_nofloat
 
-__all__ = ['KGMEncryptionAlgorithm', 'KGMEncryptionAlgorithmWithCachedMask']
+__all__ = [
+    'KGMEncryptionAlgorithm',
+    'KGMEncryptionAlgorithmWithCachedMask',
+    'VPREnceyptionAlgorithm',
+    'VPREncryptionAlgorithmWithCachedMask'
+]
 
 
 def xor_lower_helf_byte(b: int) -> int:
@@ -132,6 +138,10 @@ class KGMEncryptionAlgorithm(StreamCipherSkel):
 
 
 class KGMEncryptionAlgorithmWithCachedMask(StreamCipherSkel):
+    @property
+    def file_key(self) -> bytes:
+        return self._file_key
+
     def __init__(self,
                  file_key: BytesLike,
                  mask_data: BytesLike
@@ -162,3 +172,55 @@ class KGMEncryptionAlgorithmWithCachedMask(StreamCipherSkel):
             )
 
         return bytes(plaindata)
+
+
+class VPREnceyptionAlgorithm(KGMEncryptionAlgorithm):
+    @property
+    def vpr_key(self):
+        return self._vpr_key
+
+    def __init__(self,
+                 vpr_key: BytesLike,
+                 file_key: BytesLike,
+                 table1: BytesLike,
+                 table2: BytesLike,
+                 tablev2: BytesLike, /
+                 ):
+        self._vpr_key = tobytes(vpr_key)
+        super().__init__(file_key, table1, table2, tablev2)
+
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        raise NotImplementedError
+
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        vpr_key = self._vpr_key
+
+        staged = super().decrypt(cipherdata, offset)
+
+        return bytestrxor(staged, bytes(vpr_key[(_ + offset) % 17] for _ in range(len(cipherdata))))
+
+
+class VPREncryptionAlgorithmWithCachedMask(KGMEncryptionAlgorithmWithCachedMask):
+    @property
+    def vpr_key(self):
+        return self._vpr_key
+
+    def __init__(self, vpr_key: BytesLike, file_key: BytesLike, mask_data: BytesLike):
+        self._vpr_key = tobytes(vpr_key)
+        super().__init__(file_key, mask_data)
+
+    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+        raise NotImplementedError
+
+    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        raise NotImplementedError
+
+    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
+        vpr_key = self._vpr_key
+
+        staged = super().decrypt(cipherdata, offset)
+
+        return bytestrxor(staged, bytes(vpr_key[(_ + offset) % 17] for _ in range(len(cipherdata))))
