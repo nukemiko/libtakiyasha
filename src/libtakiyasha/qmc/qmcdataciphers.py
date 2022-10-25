@@ -233,14 +233,14 @@ class HardenedRC4(StreamCipherSkel):
             yield from self._yield_first_segment_keystream(blksize, offset)
             mark(blksize)
             if pending <= 0:
-                raise StopIteration
+                return
 
         if offset % self.common_segment_size != 0:
             blksize = min(pending, self.common_segment_size - (offset % self.common_segment_size))
             yield from self._yield_common_segment_keystream(blksize, offset)
             mark(blksize)
             if pending <= 0:
-                raise StopIteration
+                return
 
         while pending > self.common_segment_size:
             yield from self._yield_common_segment_keystream(self.common_segment_size, offset)
