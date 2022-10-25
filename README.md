@@ -18,7 +18,7 @@
 
 ---
 
-## 当前版本：[2.0.0.dev1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.dev1)
+## 当前版本：[2.0.0.a1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.a1)
 
 此版本为开发版，如果发现任何 `libtakiyasha` 自身的问题，欢迎[提交 Issue](https://github.com/nukemiko/libtakiyasha/issues)。
 
@@ -30,15 +30,16 @@
 
 ### 安装
 
--   运行命令：`pip install -U libtakiyasha==2.0.0.dev1`
--   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.dev1) 下载安装
+-   运行命令：`pip install -U libtakiyasha==2.0.0.a1`
+-   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.a1) 下载安装
 
 ### 基本使用方法
 
 提取加密文件里的音频内容：
 
 ```python
-from libtakiyasha import NCM, QMCv2
+from libtakiyasha.ncm import NCM
+from libtakiyasha.qmc import QMCv2
 
 ...  # 定义你提供的核心密钥 your_core_key、your_simple_key、your_mix_key1 和 your_mix_key2
 
@@ -47,6 +48,9 @@ ncmfile = NCM.from_file('source.ncm', core_key=your_core_key)
 target_file_format = ncm.ncm_tag.format
 
 with open('target_from_ncm.' + target_file_format, mode='wb') as fd:
+    # libtakiyasha 的所有透明加密文件对象（NCM、QMCv1、QMCv2、KGMorVPR 等）默认以固定大小的块为单位进行迭代
+    # 通过修改对象的 iter_mode 属性为 'line'，可以使其以一行为单位进行迭代
+    # 不过进行行迭代会导致性能大幅下降，不推荐使用
     for block in ncmfile:
         fd.write(block)
 
@@ -88,7 +92,7 @@ with open('target_from_mflac.' + target_file_format, mode='wb') as fd:
 生成加密文件（以 QMCv2 为例）：
 
 ```python
-from libtakiyasha import QMCv2
+from libtakiyasha.qmc import QMCv2
 
 ...  # 定义你的 your_simple_key、your_mix_key1 和 your_mix_key2
 
