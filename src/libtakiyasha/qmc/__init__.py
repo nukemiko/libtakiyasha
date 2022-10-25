@@ -434,17 +434,18 @@ class QMCv2(CryptLayerWrappedIOSkel):
                   mix_key2: BytesLike = None, *,
                   master_key: BytesLike = None,
                   ) -> QMCv2:
-        """打开一个 QMCv2 文件或文件对象 ``qmcv1_filething``。
+        """打开一个 QMCv2 文件或文件对象 ``qmcv2_filething``。
 
         第一个位置参数 ``qmcv2_filething`` 可以是文件路径（``str``、``bytes``
         或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv2_filething``
-        也可以是一个文件对象，但必须可读。
+        也可以是一个文件对象，但必须可读、可跳转（``qmcv2_filething.seekable() == True``）。
 
         本方法会寻找文件内嵌主密钥的位置和加密方式，进而判断所用加密算法的类型。
 
         如果提供了参数 ``master_key``，那么此参数将会被视为主密钥，
         用于判断加密算法类型和解密音频数据，同时会跳过其他步骤。
-        其长度仅限 128、256 或 512 位。如果不符合长度要求，会触发 ``ValueError``。否则：
+        其必须是类字节对象，且转换为 ``bytes`` 的长度必须是 128、256
+        或 512 位。如果不符合长度要求，会触发 ``ValueError``。否则：
 
         - 如果未能找到文件内嵌的主密钥，那么参数 ``master_key`` 是必需的。
         - 如果文件内嵌的主密钥，其加密版本为 V1，那么参数 ``simple_key`` 是必需的。
@@ -602,7 +603,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                 mix_key1: BytesLike = None,
                 mix_key2: BytesLike = None
                 ) -> None:
-        """将当前 QMCv2 对象的内容保存到文件 ``qmcv1_filething``。
+        """将当前 QMCv2 对象的内容保存到文件 ``qmcv2_filething``。
 
         第一个位置参数 ``qmcv2_filething`` 可以是文件路径（``str``、``bytes``
         或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv2_filething``
