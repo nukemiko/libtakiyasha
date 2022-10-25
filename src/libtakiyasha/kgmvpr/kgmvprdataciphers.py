@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Generator, TypedDict
 
 from .kgmmaskutils import make_maskstream, xor_half_lower_byte
-from .. import StreamCipherSkel
+from ..common import StreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
 
