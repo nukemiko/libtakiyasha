@@ -5,7 +5,7 @@ import json
 from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
 from secrets import token_bytes
-from typing import Any, IO, Iterable, Mapping
+from typing import Any, IO, Iterable, Mapping, TypedDict
 
 from .common import CryptLayerWrappedIOSkel
 from .exceptions import CrypterCreatingError, CrypterSavingError
@@ -18,6 +18,20 @@ from .typeutils import is_filepath, tobytes, verify_fileobj
 __all__ = ['CloudMusicIdentifier', 'NCM']
 
 _TAG_KEY = b'\x23\x31\x34\x6c\x6a\x6b\x5f\x21\x5c\x5d\x26\x30\x55\x3c\x27\x28'
+
+MutagenStyleDict = TypedDict(
+    'MutagenStyleDict', {
+        'TIT2'         : list,
+        'TPE1'         : list,
+        'TALB'         : list,
+        'TXXX::comment': list,
+        'title'        : list,
+        'artist'       : list,
+        'album'        : list,
+        'comment'      : list
+    },
+    total=False
+)
 
 
 @dataclass
@@ -82,7 +96,7 @@ class CloudMusicIdentifier:
         else:
             return target
 
-    def to_mutagen_style_dict(self) -> dict[str, Any]:
+    def to_mutagen_style_dict(self) -> MutagenStyleDict:
         """根据当前对象储存的解析结果，构建并返回一个 Mutagen VorbisComment/ID3 风格的字典。
 
         此方法需要当前对象的 ``format`` 属性来决定构建何种风格的字典，
@@ -92,10 +106,30 @@ class CloudMusicIdentifier:
 
         配合 Mutagen 使用（以 FLAC 为例）：
 
+        >>> from mutagen import flac  # type: ignore
         >>> ncm_tag = CloudMusicIdentifier(format='flac')
         >>> mutagen_flac = mutagen.flac.FLAC('target.flac')  # type: ignore
         >>> mutagen_flac.clear()  # 可选，此步骤将会清空 mutagen_flac 已有的数据
         >>> mutagen_flac.update(ncm_tag.to_mutagen_style_dict())
+        >>> mutagen_flac.save()
+        >>>
+
+        配合 Mutagen 使用（以 MP3 为例，稍微麻烦一些）：
+
+        >>> from mutagen import id3, mp3  # type: ignore
+        >>> ncm_tag = CloudMusicIdentifier(format='mp3')
+        >>> mutagen_mp3 = mutagen.mp3.MP3('target.mp3')  # type: ignore
+        >>> mutagen_mp3.clear()  # 可选，此步骤将会清空 mutagen_mp3 已有的数据
+        >>> for key, value in ncm_tag.to_mutagen_style_dict().items():
+        ...     id3frame_cls = getattr(id3, key[:4])
+        ...     id3frame = mutagen_mp3.get(key)
+        ...     if id3frame is None:
+        ...         mutagen_mp3[key] = id3frame_cls(text=value, desc='comment')
+        ...     elif id3frame.text:
+        ...         id3frame.text = value
+        ...         mutagen_mp3[key] = id3frame
+        ...
+        >>> mutagen_mp3.save()
         >>>
         """
         comment = self.to_ncm_163key(with_xor=False).decode('utf-8')
