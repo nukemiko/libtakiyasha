@@ -88,19 +88,19 @@ total_tasks = len(sourcefiles)
 finished_tasks: list[tuple[Path, Path | str | Exception]] = []
 for taskno, source_path in enumerate(sourcefiles, start=1):
     columns, lines = shutil.get_terminal_size()
-    print(f'=' * columns)
+    print('=' * columns)
     print(f"{progname}：正在进行：第 {taskno} 个任务，共 {total_tasks} 个")
 
     source_filename = source_path.name
     if not source_path.exists():
         print(f"{progname}：跳过路径 '{source_path}'：路径不存在", file=sys.stderr)
         finished_tasks.append((source_path, '路径不存在'))
-        print(f'=' * columns)
+        print('=' * columns)
         continue
     elif source_path.is_dir():
         print(f"{progname}：跳过路径 '{source_path}'：路径指向一个目录而不是文件", file=sys.stderr)
         finished_tasks.append((source_path, '路径指向一个目录而不是文件'))
-        print(f'=' * columns)
+        print('=' * columns)
         continue
 
     try:
@@ -108,7 +108,7 @@ for taskno, source_path in enumerate(sourcefiles, start=1):
     except Exception as exc:
         print(f"{progname}：跳过文件 '{str_shorten(source_filename)}'：解析文件时出现错误：{exc}", file=sys.stderr)
         finished_tasks.append((source_path, exc))
-        print(f'=' * columns)
+        print('=' * columns)
         continue
     else:
         print(f"{progname}：成功打开文件 '{str_shorten(source_filename)}'")
@@ -185,7 +185,17 @@ for taskno, source_path in enumerate(sourcefiles, start=1):
                 targetfd.seek(0, 0)
                 mp3tag = mp3.MP3(targetfd)
                 targetfd.seek(0, 0)
-                mp3tag.update(mutagen_style_dict)
+                # mp3tag.update(mutagen_style_dict)
+                # mutagen.mp3.MP3 要求每个键的值都是 mutagen.id3.Frames 的子类的对象，
+                # 因此修改了修改标签的方式：
+                for key, value in mutagen_style_dict.items():
+                    id3frame_cls: id3.TIT2 | id3.TPE1 | id3.TALB = getattr(id3, key[:4])
+                    id3frame: id3.TextFrame | None = mp3tag.get(key)
+                    if id3frame is None:
+                        mp3tag[key] = id3frame_cls(text=value, desc='comment')
+                    elif not id3frame.text:
+                        id3frame.text = value
+                        mp3tag[key] = id3frame
                 if cover_data:
                     picture = id3.APIC()
                     picture.data = cover_data
@@ -202,4 +212,4 @@ for taskno, source_path in enumerate(sourcefiles, start=1):
             print(f"{progname}：成功为 '{str_shorten(target_filename)}' 设定了标签和封面信息")
 
         print(f"{progname}：任务完成：'{str_shorten(source_filename)}' -> '{str_shorten(target_filename)}'")
-        print(f'=' * columns)
+        print('=' * columns)
