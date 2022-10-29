@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
 from secrets import token_bytes
@@ -14,6 +15,7 @@ from .miscutils import bytestrxor
 from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import is_filepath, tobytes, verify_fileobj
+from .warns import CrypterCreatingWarning
 
 __all__ = ['CloudMusicIdentifier', 'NCM']
 
@@ -288,7 +290,18 @@ class NCM(CryptLayerWrappedIOSkel):
 
             ncm_163key_xored_len = int.from_bytes(fileobj.read(4), 'little')
             ncm_163key_xored = fileobj.read(ncm_163key_xored_len)
-            ncm_tag = CloudMusicIdentifier.from_ncm_163key(ncm_163key_xored, is_xored=True)
+            try:
+                ncm_tag = CloudMusicIdentifier.from_ncm_163key(ncm_163key_xored, is_xored=True)
+            except Exception as exc:
+                warnings.warn(f'skip parsing 163key, because an exception was raised while parsing: '
+                              f'{type(exc).__name__}: {exc}',
+                              CrypterCreatingWarning
+                              )
+                warnings.warn(f"you may need to check if the file {repr(ncm_filething)} "
+                              f"is corrupted.",
+                              CrypterCreatingWarning
+                              )
+                ncm_tag = None
 
             fileobj.seek(5, 1)
 
