@@ -472,7 +472,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                 stag_len = int.from_bytes(fileobj.read(4), 'big')
                 if stag_len + 8 > fileobj_endpos:
                     raise CrypterCreatingError(
-                        f'{fileobj} is not a valid QMCv2 file: '
+                        f'{repr(qmcv2_filething)} is not a valid QMCv2 file: '
                         f'QMCv2 STag data length ({stag_len + 8}) '
                         f'is greater than file length ({fileobj_endpos})'
                     )
@@ -492,7 +492,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                     qtag_len = int.from_bytes(fileobj.read(4), 'big')
                     if qtag_len + 8 > fileobj_endpos:
                         raise CrypterCreatingError(
-                            f'{fileobj} is not a valid QMCv2 file: '
+                            f'{repr(qmcv2_filething)} is not a valid QMCv2 file: '
                             f'QMCv2 QTag data length ({qtag_len + 8}) '
                             f'is greater than file length ({fileobj_endpos})'
                         )
@@ -512,7 +512,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                     master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
                     if master_key_encrypted_b64encoded_len + 4 > fileobj_endpos:
                         raise CrypterCreatingError(
-                            f'{fileobj} is not a valid QMCv2 file: '
+                            f'{repr(qmcv2_filething)} is not a valid QMCv2 file: '
                             f'QMCv2 QTag data length ({master_key_encrypted_b64encoded_len + 4}) '
                             f'is greater than file length ({fileobj_endpos})'
                         )
