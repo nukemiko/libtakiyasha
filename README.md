@@ -1,8 +1,8 @@
-# libtakiyasha ![](https://img.shields.io/badge/Version-2.0.0.b1-green) ![](https://img.shields.io/badge/Python-3.8%2B-blue)
+# libtakiyasha ![](https://img.shields.io/badge/Version-2.0.0-green) ![](https://img.shields.io/badge/Python-3.8%2B-blue)
 
 `libtakiyasha` 是一个 Python 音频加密/解密工具库（当然也可用于加密非音频数据），支持多种加密文件格式。
 
-`libtakiyasha` 是从 [`takiyasha`](https://github.com/nukemiko/takiyasha) 项目中拆分出来的，**它只是一个工具库，不提供任何命令行或图形界面支持。**
+`libtakiyasha` 只是一个工具库，不提供任何命令行或图形界面支持。
 
 ---
 
@@ -15,15 +15,21 @@
 
 **本项目不会内置任何解密所需的密钥。你需要自行寻找解密所需密钥或加密参数，在调用时作为参数传入。**
 
-你可以在内容提供商的应用程序中查找这些必需参数，或寻求同类项目以及他人的帮助。**但请不要在 Issues/讨论区向作者索要所谓“缺失”的“内置密钥”，作者不可能满足你的此类想法。**
+你可以在内容提供商的应用程序中查找这些必需参数，或寻求同类项目以及他人的帮助。**但请不要在 Issues/讨论区向作者索要所谓“缺失”的“内置密钥”，你的此类想法不会被满足。**
 
 **`libtakiyasha` 对输出数据的可用性（是否可以识别、播放等）不做任何保证。**
 
 ---
 
-## 当前版本：[2.0.0.b1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.b1)
+## 特性
 
-此版本为开发版，下一版本可能就会作为正式版发布。如果发现任何 `libtakiyasha` 自身的问题，欢迎[提交 Issue](https://github.com/nukemiko/libtakiyasha/issues)。
+-   纯 Python 实现（包括所有依赖关系），可跨平台安装使用
+-   不仅可以解密，还提供加密支持
+-   支持多种加密文件格式
+
+## 当前版本：[2.0.0](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0)
+
+此版本为正式版，但仍有不完美之处。如果发现任何 `libtakiyasha` 自身的问题，欢迎[提交 Issue](https://github.com/nukemiko/libtakiyasha/issues)。
 
 **`libtakiyasha` 2.x 版本和 1.x 版本之间的接口并不兼容，使用 1.x 版本的应用程序需要进行大量改造，才能使用 2.x 版本。**
 
@@ -33,7 +39,7 @@
 
 ### 兼容性
 
-到目前为止（版本 2.0.0.b1），`libtakiyasha` 已在以下 Python 实现中通过了测试：
+到目前为止（版本 2.0.0），`libtakiyasha` 已在以下 Python 实现中通过了测试：
 
 -   [CPython（官方实现）](https://www.python.org) 3.8 至 3.10
 -   [Pyston](https://github.com/pyston/pyston) [2.3.5](https://github.com/pyston/pyston/releases/tag/pyston_2.3.5)（基于 CPython 3.8.12），其他版本或许也可用
@@ -45,8 +51,15 @@
 
 ### 安装
 
--   运行命令：`pip install -U libtakiyasha==2.0.0.b1`
--   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0.b1) 下载安装
+-   运行命令：`pip install -U libtakiyasha==2.0.0`
+-   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0) 下载安装
+
+#### 所需依赖关系
+
+-   `pyaes` - AES 加解密支持
+-   `setuptools` - 安装依赖
+
+如果你是通过[上文提到的方式](#安装)安装的 `libtakiyasha`，这些依赖会被自动安装。
 
 ### 基本使用方法
 
