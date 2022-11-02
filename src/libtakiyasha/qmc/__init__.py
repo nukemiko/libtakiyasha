@@ -407,9 +407,9 @@ class QMCv2(CryptLayerWrappedIOSkel):
         这些参数是无关紧要的。
         """
         if cipher_type == 'mask':
-            cipher = Mask128.from_qmcv2_key256(make_random_ascii_string(256))
+            cipher = Mask128.from_qmcv2_key256(make_random_ascii_string(256).encode('utf-8'))
         elif cipher_type == 'rc4':
-            cipher = HardenedRC4(make_random_ascii_string(512))
+            cipher = HardenedRC4(make_random_ascii_string(512).encode('utf-8'))
         elif isinstance(cipher_type, str):
             raise ValueError(f"first argument 'cipher_type' must be 'mask' or 'rc4', not {cipher_type}")
         else:
