@@ -1,4 +1,4 @@
-# libtakiyasha ![](https://img.shields.io/badge/Version-2.0.0-1-green) ![](https://img.shields.io/badge/Python-3.8%2B-blue)
+# libtakiyasha ![](https://img.shields.io/badge/Version-2.0.1-green) ![](https://img.shields.io/badge/Python-3.8%2B-blue)
 
 `libtakiyasha` 是一个 Python 音频加密/解密工具库（当然也可用于加密非音频数据），支持多种加密文件格式。
 
@@ -23,15 +23,16 @@
 
 ## 特性
 
--   纯 Python 实现（包括所有依赖关系），可跨平台安装使用
--   不仅可以解密，还提供加密支持
--   支持多种加密文件格式
+-   纯 Python 实现（包括所有依赖关系），无 C/C++ 扩展模块，跨平台可用
+-   支持多种加密文件格式的加密和解密
 
-## 当前版本：[2.0.0-1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0-1)
+## 当前版本：[2.0.1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.1)
 
 此版本为正式版，但仍有不完美之处。如果发现任何 `libtakiyasha` 自身的问题，欢迎[提交 Issue](https://github.com/nukemiko/libtakiyasha/issues)。
 
 **`libtakiyasha` 2.x 版本和 1.x 版本之间的接口并不兼容，使用 1.x 版本的应用程序需要进行大量改造，才能使用 2.x 版本。**
+
+另外，`libtakiyasha` 3.x 版本正在开发，有兴趣者可以切换分支查看。
 
 ### 支持的格式
 
@@ -39,20 +40,20 @@
 
 ### 兼容性
 
-到目前为止（版本 2.0.0-1），`libtakiyasha` 已在以下 Python 实现中通过了测试：
+到目前为止（版本 2.0.1），`libtakiyasha` 已在以下 Python 实现中通过了测试：
 
--   [CPython（官方实现）](https://www.python.org) 3.8 至 3.10
+-   [CPython（官方实现）](https://www.python.org) 3.8 至 3.10，可能支持 3.11
 -   [Pyston](https://github.com/pyston/pyston) [2.3.5](https://github.com/pyston/pyston/releases/tag/pyston_2.3.5)（基于 CPython 3.8.12），其他版本或许也可用
 -   [PyPy](https://www.pypy.org/) 7.3.9（[CPython 3.8 兼容版本、CPython 3.9 兼容版本](https://downloads.python.org/pypy/)）
 
-**注意：`libtakiyasha` 所需的最低 Python 版本为 3.8。`libtakiyasha` 使用的很多 Python 特性从 Python 3.8 开始才出现，使用更低的 Python 版本会出现大量不可预知的错误。**
+**注意：`libtakiyasha` 所需的最低 Python 版本为 3.8，因为它使用的很多 Python 特性从 Python 3.8 开始才出现，这意味着使用更低的 Python 版本会出现大量不可预知的错误。**
 
 提示：在作者运行的测试中，CPython 实现是速度最慢的；PyPy 比 Pyston 快了大约两倍，比 CPython 快了接近五倍。
 
 ### 安装
 
--   运行命令：`pip install -U libtakiyasha==2.0.0.post1`
--   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.0-1) 下载安装
+-   运行命令：`pip install -U libtakiyasha==2.0.1`
+-   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.1) 下载安装
 
 #### 所需依赖关系
 
