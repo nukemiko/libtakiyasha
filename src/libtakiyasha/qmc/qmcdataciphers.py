@@ -141,7 +141,7 @@ class HardenedRC4(StreamCipherSkel):
     @property
     def hash_base(self) -> int:
         base = 1
-        key = self._key512
+        key = self._master_key
 
         for i in range(len(key)):
             v: int = key[i]
@@ -162,24 +162,28 @@ class HardenedRC4(StreamCipherSkel):
         return 5120
 
     @property
-    def key512(self) -> bytes:
-        return self._key512
+    def master_key(self) -> bytes:
+        return self._master_key
 
-    def __init__(self, key512: BytesLike, /):
-        self._key512 = tobytes(key512)
+    def __init__(self, master_key: BytesLike, /):
+        self._master_key = tobytes(master_key)
 
-        key_len = len(self._key512)
+        key_len = len(self._master_key)
+        if len(self._master_key) == 0:
+            raise ValueError("first argument 'master_key' cannot be an empty bytestring")
+        if b'\x00' in self._master_key:
+            raise ValueError("b'\\x00' cannot appear in the first argument 'master_key'")
 
         self._box = bytearray(i % 256 for i in range(key_len))
         j = 0
         for i in range(key_len):
-            j = (j + self._box[i] + self._key512[i % key_len]) % key_len
+            j = (j + self._box[i] + self._master_key[i % key_len]) % key_len
             self._box[i], self._box[j] = self._box[j], self._box[i]
 
     @lru_cache(maxsize=65536)
     def _get_segment_skip(self, value: int) -> int:
-        key = self._key512
-        key_len = len(self._key512)
+        key = self._master_key
+        key_len = len(self._master_key)
 
         seed = key[value % key_len]
         idx = int(self.hash_base / ((value + 1) * seed) * 100)
@@ -190,7 +194,7 @@ class HardenedRC4(StreamCipherSkel):
                                        blksize: int,
                                        offset: int
                                        ) -> Generator[int, None, None]:
-        key = self._key512
+        key = self._master_key
         for i in range(offset, offset + blksize):
             yield key[self._get_segment_skip(i)]
 
@@ -198,7 +202,7 @@ class HardenedRC4(StreamCipherSkel):
                                         blksize: int,
                                         offset: int
                                         ) -> Generator[int, None, None]:
-        key_len = len(self._key512)
+        key_len = len(self._master_key)
         box = self._box.copy()
         j, k = 0, 0
 

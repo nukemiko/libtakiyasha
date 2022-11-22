@@ -242,7 +242,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
     @property
     def master_key(self) -> bytes:
         if isinstance(self.cipher, HardenedRC4):
-            return self.cipher.key512
+            return self.cipher.master_key
         elif isinstance(self.cipher, Mask128):
             if self.cipher.original_master_key is None:
                 return self.cipher.mask128
