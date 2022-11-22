@@ -41,6 +41,11 @@ class QMCv2KeyEncryptV1(CipherSkel):
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
+        if len(plaindata) < 8:  # 明文长度不可小于 8
+            raise ValueError('invalid plaindata length: should be greater than or equal to 8, '
+                             f'not {len(plaindata)}'
+                             )
+
         recipe = plaindata[:8]
         payload = plaindata[8:]
 
@@ -54,6 +59,11 @@ class QMCv2KeyEncryptV1(CipherSkel):
     def decrypt(self, cipherdata: BytesLike, /) -> bytes:
         # cipherdata 应当为 b64decode 之后的结果
         cipherdata = tobytes(cipherdata)
+        if len(cipherdata) < 8:  # 密文长度不可小于 8
+            raise ValueError('invalid cipherdata length: should be greater than or equal to 8, '
+                             f'not {len(cipherdata)}'
+                             )
+
         recipe = cipherdata[:8]
         payload = cipherdata[8:]
 
