@@ -180,16 +180,6 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         # 根据 plaindata 长度计算 pad_len，最小长度必须为 8 的整数倍
         plaindata = tobytes(plaindata)
-        if len(plaindata) < self.blocksize:
-            raise ValueError(
-                f'invalid plaindata length: should be greater than '
-                f'{self.blocksize}, not {len(plaindata)}'
-            )
-        if len(plaindata) % self.blocksize != 0:
-            raise ValueError(
-                f'invalid plaindata length ({len(plaindata)}): '
-                f'not a integer multiple of {self.blocksize}'
-            )
 
         pad_salt_body_zero_len = (len(plaindata) + self.salt_len + self.zero_len + 1)
         pad_len = pad_salt_body_zero_len % self.blocksize
