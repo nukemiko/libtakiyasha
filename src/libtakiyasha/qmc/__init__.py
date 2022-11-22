@@ -485,7 +485,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                 fileobj.seek(0, 0)
                 initial_bytes = fileobj.read(audio_encrypted_len)
             else:
-                if simple_key is None:
+                if simple_key is None and master_key is None:
                     raise ValueError("'simple_key' is required for QMCv2 file master key decryption")
                 if tail_data == b'QTag':
                     fileobj.seek(-8, 2)
