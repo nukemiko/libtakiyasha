@@ -362,11 +362,13 @@ class ARC4(StreamCipherSkel):
         """标准的 RC4 加密算法实现。
 
         Args:
-            key: 密钥，长度不可大于 256
+            key: 密钥，长度不可大于 256，且不可为空
         """
         key = tobytes(key)
         self._key = key
         key_len = len(key)
+        if key_len == 0:
+            raise ValueError(f"first argument 'key' cannot be an empty bytestring")
         if key_len > 256:
             raise ValueError(f'key length should be less than 256, got {key_len}')
 
