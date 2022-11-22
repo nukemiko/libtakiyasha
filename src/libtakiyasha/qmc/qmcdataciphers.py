@@ -169,7 +169,7 @@ class HardenedRC4(StreamCipherSkel):
         self._master_key = tobytes(master_key)
 
         key_len = len(self._master_key)
-        if len(self._master_key) == 0:
+        if key_len == 0:
             raise ValueError("first argument 'master_key' cannot be an empty bytestring")
         if b'\x00' in self._master_key:
             raise ValueError("b'\\x00' cannot appear in the first argument 'master_key'")
