@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Generator
 
-from ..common import StreamCipherSkel
+from ..common import KeyStreamBasedStreamCipherSkel
 from ..miscutils import bytestrxor
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import tobytes, toint
@@ -11,7 +11,7 @@ from ..typeutils import tobytes, toint
 __all__ = ['Mask32']
 
 
-class Mask32(StreamCipherSkel):
+class Mask32(KeyStreamBasedStreamCipherSkel):
     @property
     def core_key(self) -> bytes:
         return self._core_key

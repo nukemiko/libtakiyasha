@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Generator, TypedDict
 
 from .kgmvprmaskutils import make_maskstream, xor_half_lower_byte
-from ..common import StreamCipherSkel
+from ..common import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
@@ -17,7 +17,7 @@ class KGMorVPRTables(TypedDict):
     tablev2: bytes
 
 
-class KGMorVPREncryptAlgorithm(StreamCipherSkel):
+class KGMorVPREncryptAlgorithm(KeyStreamBasedStreamCipherSkel):
     @CachedClassInstanceProperty
     def keysize(self) -> int:
         return 17

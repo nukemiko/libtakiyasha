@@ -13,7 +13,7 @@ from typing import Generator
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import StreamCipherSkel, CipherSkel
+from .common import KeyStreamBasedStreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
@@ -353,7 +353,7 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
         return bytes(out_buf)
 
 
-class ARC4(StreamCipherSkel):
+class ARC4(KeyStreamBasedStreamCipherSkel):
     @property
     def master_key(self) -> bytes:
         return self._key

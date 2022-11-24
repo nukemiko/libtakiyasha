@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Generator
 
 from .qmcconsts import KEY256_MAPPING
-from ..common import StreamCipherSkel
+from ..common import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
@@ -15,7 +15,7 @@ __all__ = [
 ]
 
 
-class Mask128(StreamCipherSkel):
+class Mask128(KeyStreamBasedStreamCipherSkel):
     @property
     def original_master_key(self) -> bytes | None:
         if hasattr(self, '_original_master_key'):
@@ -133,7 +133,7 @@ class Mask128(StreamCipherSkel):
         yield from self.cls_keystream(nbytes, offset, mask128=self._mask128)
 
 
-class HardenedRC4(StreamCipherSkel):
+class HardenedRC4(KeyStreamBasedStreamCipherSkel):
     @property
     def hash_base(self) -> int:
         base = 1

@@ -17,7 +17,7 @@ from .typeutils import tobytes, toint
 
 __all__ = [
     'CipherSkel',
-    'StreamCipherSkel',
+    'KeyStreamBasedStreamCipherSkel',
     'CryptLayerWrappedIOSkel'
 ]
 
@@ -44,7 +44,7 @@ class CipherSkel(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class StreamCipherSkel(metaclass=ABCMeta):
+class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
     """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 方法。
 
     如果受限于技术原因无法在 ``keystream()`` 中实现逻辑，那么
@@ -63,24 +63,20 @@ class StreamCipherSkel(metaclass=ABCMeta):
         raise NotImplementedError
 
     @classmethod
-    def preoperations_plaindata(cls, plaindata: BytesLike, /) -> Generator[int, None, None]:
-        """返回一个生成器对象，对其进行迭代，即可得到对明文 ``plaindata``
-        的每个字节进行特定操作之后的结果。
+    def preprocess(cls,
+                   operation: Literal['encrypt', 'decrypt'],
+                   data: BytesLike, /
+                   ) -> Generator[int, None, None]:
+        """对目标数据 ``data`` 根据操作 ``operation`` 进行预处理，并返回一个生成器。
+        迭代此生成器，即可得到处理后的结果数据。
 
         Args:
-            plaindata: 要操作的明文
+            operation: 需要针对的操作，只能是 ``'encrypt'`` 或 ``'decrypt'``
+            data: 需要预处理的数据
         """
-        yield from tobytes(plaindata)
-
-    @classmethod
-    def preoperations_cipherdata(cls, cipherdata: BytesLike, /) -> Generator[int, None, None]:
-        """返回一个生成器对象，对其进行迭代，即可得到对密文 ``cipher``
-        的每个字节进行特定操作之后的结果。
-
-        Args:
-            cipherdata: 要操作的密文
-        """
-        yield from tobytes(cipherdata)
+        if operation not in ('encrypt', 'decrypt'):
+            raise ValueError(f"first argument 'operation' must be 'encrypt' or 'decrypt', not {repr(operation)}")
+        yield from tobytes(data)
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """加密明文 ``plaindata`` 并返回加密结果。
@@ -92,7 +88,7 @@ class StreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        return bytestrxor(self.preoperations_plaindata(plaindata),
+        return bytestrxor(self.preprocess('encrypt', plaindata),
                           self.keystream(len(plaindata), offset)
                           )
 
@@ -106,7 +102,7 @@ class StreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        return bytestrxor(self.preoperations_cipherdata(cipherdata),
+        return bytestrxor(self.preprocess('decrypt', cipherdata),
                           self.keystream(len(cipherdata), offset)
                           )
 
