@@ -11,8 +11,8 @@ __all__ = [
     'CachedClassInstanceProperty',
     'tobytes',
     'tobytearray',
-    'toint_nofloat',
-    'is_filepath',
+    'toint',
+    'isfilepath',
     'verify_fileobj'
 ]
 
@@ -128,55 +128,57 @@ class CachedClassInstanceProperty(ClassInstanceProperty):
         super().__delete__(obj)
 
 
-def tobytes(byteslike: BytesLike) -> bytes:
-    """尝试将 ``byteslike`` 转换为 ``bytes``。
+def tobytes(byteslike: BytesLike, /) -> bytes:
+    """一个 ``bytes()`` 的包装器。
 
-    对 ``int`` 类型的对象不适用。如果输入这样的值，会触发 ``TypeError``。
+    本函数尝试将 ``byteslike`` 转换为 ``bytes``。
+
+    和 ``bytes()`` 不一样，本函数不支持通过指定长度的方式创建 ``bytes``
+    对象，即不接受整数类型 ``int`` 对象作为参数。如果输入此类对象，将会引发
+    ``TypeError``。同时，本函数也不承担对字符串的编码。
     """
-    if isinstance(byteslike, int):
-        # 防止出现 bytes(1000) 这样的情况
+    if isinstance(byteslike, int) and not hasattr(byteslike, '__bytes__'):
+        # 防止出现 bytes(114514) 这样的情况
         raise TypeError(f"a bytes-like object is required, not '{type(byteslike).__name__}'")
-    elif isinstance(byteslike, bytes):
-        return byteslike
     else:
         return bytes(byteslike)
 
 
-def tobytearray(byteslike: BytesLike) -> bytearray:
-    """尝试将 ``byteslike`` 转换为 ``bytearray``。
+def tobytearray(byteslike: BytesLike, /) -> bytearray:
+    """一个 ``bytearray()`` 的包装器。
 
-    对 ``int`` 类型的对象不适用。如果输入这样的值，会触发 ``TypeError``。
+    本函数尝试将 ``byteslike`` 转换为 ``bytearray``。
+
+    和 ``bytearray()`` 不一样，本函数不支持通过指定长度的方式创建 ``bytearray``
+    对象，即不接受整数类型 ``int`` 对象作为参数。如果输入此类对象，将会引发
+    ``TypeError``。同时，本函数也不承担对字符串的编码。
     """
-    if isinstance(byteslike, int):
-        # 防止出现 bytearray(1000) 这样的情况
+    if isinstance(byteslike, int) and not hasattr(byteslike, '__bytes__'):
+        # 防止出现 bytearray(114514) 这样的情况
         raise TypeError(f"a bytes-like object is required, not '{type(byteslike).__name__}'")
-    elif isinstance(byteslike, bytearray):
-        return byteslike
     else:
         return bytearray(byteslike)
 
 
-def toint_nofloat(integerlike: IntegerLike) -> int:
-    """尝试将 ``integerlike`` 转换为 ``int``。
+def toint(integerlike: IntegerLike, /) -> int:
+    """一个 ``int()`` 的包装器。
 
-    对 ``float`` 类型或拥有 ``__float__`` 属性的对象不适用。
-    如果输入这样的值，会触发 ``TypeError``。
+    尽管 ``int()`` 可以转换浮点数，但是本函数不接受浮点数。如果输入此类对象，将会引发
+    ``TypeError``。
     """
     if isinstance(integerlike, float):
         raise TypeError(f"'{type(integerlike).__name__}' object cannot be interpreted as an integer")
-    elif isinstance(integerlike, int):
-        return integerlike
     else:
         return int(integerlike)
 
 
-def is_filepath(obj) -> bool:
+def isfilepath(obj, /) -> bool:
     """判断对象 ``obj`` 是否可以被视为文件路径。
 
     只有 ``str``、``bytes`` 类型，或者拥有 ``__fspath__``
     属性的对象，才会被视为文件路径。
     """
-    return isinstance(obj, (str, bytes)) or hasattr(obj, '__fspath__')
+    return isinstance(obj, (str, bytes, bytearray)) or hasattr(obj, '__fspath__')
 
 
 def verify_fileobj(fileobj: IO[str | bytes],

@@ -8,7 +8,7 @@ from ..common import CryptLayerWrappedIOSkel
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_salt
 from ..typedefs import BytesLike, FilePath
-from ..typeutils import is_filepath, tobytes, verify_fileobj
+from ..typeutils import isfilepath, tobytes, verify_fileobj
 
 __all__ = ['KGMorVPR']
 
@@ -165,7 +165,7 @@ class KGMorVPR(CryptLayerWrappedIOSkel):
         if vpr_key is not None:
             vpr_key = tobytes(vpr_key)
 
-        if is_filepath(kgm_vpr_filething):
+        if isfilepath(kgm_vpr_filething):
             with open(kgm_vpr_filething, mode='rb') as kgm_vpr_fileobj:
                 instance = operation(kgm_vpr_fileobj)
         else:

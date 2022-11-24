@@ -13,7 +13,7 @@ except ImportError:
     import _pyio as io
 
 from .typedefs import IntegerLike, BytesLike, WritableBuffer
-from .typeutils import tobytes, toint_nofloat
+from .typeutils import tobytes, toint
 
 __all__ = [
     'CipherSkel',
@@ -66,7 +66,7 @@ class StreamCipherSkel(metaclass=ABCMeta):
             offset: 明文在文件中的位置（偏移量），不应为负数
         """
         plaindata = tobytes(plaindata)
-        offset = toint_nofloat(offset)
+        offset = toint(offset)
 
         return bytestrxor(plaindata, self.keystream(offset, len(plaindata)))
 
@@ -78,7 +78,7 @@ class StreamCipherSkel(metaclass=ABCMeta):
             offset: 密文在文件中的位置（偏移量），不应为负数
         """
         cipherdata = tobytes(cipherdata)
-        offset = toint_nofloat(offset)
+        offset = toint(offset)
 
         return bytestrxor(cipherdata, self.keystream(offset, len(cipherdata)))
 
@@ -182,7 +182,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
     @iter_block_size.setter
     def iter_block_size(self, value: IntegerLike) -> None:
-        size = toint_nofloat(value)
+        size = toint(value)
         if size < 0:
             raise ValueError("attribute 'iter_block_size' cannot be a negative integer")
         self._iter_block_size = size
@@ -371,7 +371,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
             curpos = self.tell()
             if size is None:
                 size = -1
-            size = toint_nofloat(size)
+            size = toint(size)
             if size < 0:
                 target_data = super().getvalue()[curpos:]
             else:
@@ -427,10 +427,10 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
         curpos = self.tell()
         if size is None:
             size = -1
-        size = toint_nofloat(size)
+        size = toint(size)
         if block_size is None:
             block_size = io.DEFAULT_BUFFER_SIZE
-        block_size = toint_nofloat(block_size)
+        block_size = toint(block_size)
         if block_size < 0:
             block_size = io.DEFAULT_BUFFER_SIZE
         if size < 0:
@@ -458,7 +458,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
             curpos = self.tell()
             if size is None:
                 size = -1
-            size = toint_nofloat(size)
+            size = toint(size)
             if size < 0:
                 target_data = super().getvalue()[curpos:]
             else:
@@ -494,7 +494,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
             results_lines = []
             if hint is None:
                 hint = -1
-            hint = toint_nofloat(hint)
+            hint = toint(hint)
             if hint < 0:
                 while 1:
                     line = self.readline()

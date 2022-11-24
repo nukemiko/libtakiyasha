@@ -14,7 +14,7 @@ from .keyutils import make_random_ascii_string, make_random_number_string
 from .miscutils import bytestrxor
 from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
-from .typeutils import is_filepath, tobytes, verify_fileobj
+from .typeutils import isfilepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
 __all__ = ['CloudMusicIdentifier', 'NCM']
@@ -319,7 +319,7 @@ class NCM(CryptLayerWrappedIOSkel):
 
             return cls(cipher, audio_encrypted, ncm_tag=ncm_tag, cover_data=cover_data, core_key=core_key)
 
-        if is_filepath(ncm_filething):
+        if isfilepath(ncm_filething):
             with open(ncm_filething, mode='rb') as ncm_fileobj:
                 instance = operation(ncm_fileobj)
         else:
@@ -388,7 +388,7 @@ class NCM(CryptLayerWrappedIOSkel):
         else:
             core_key = tobytes(core_key)
 
-        if is_filepath(ncm_filething):
+        if isfilepath(ncm_filething):
             with open(ncm_filething, mode='wb') as ncm_fileobj:
                 operation(ncm_fileobj)
         else:

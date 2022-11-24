@@ -7,7 +7,7 @@ from .kwmdataciphers import Mask32
 from ..common import CryptLayerWrappedIOSkel
 from ..keyutils import make_salt
 from ..typedefs import BytesLike, FilePath
-from ..typeutils import is_filepath, tobytes, verify_fileobj
+from ..typeutils import isfilepath, tobytes, verify_fileobj
 
 
 class KWM(CryptLayerWrappedIOSkel):
@@ -101,7 +101,7 @@ class KWM(CryptLayerWrappedIOSkel):
 
         core_key = tobytes(core_key)
 
-        if is_filepath(kwm_filething):
+        if isfilepath(kwm_filething):
             with open(kwm_filething, mode='rb') as kwm_fileobj:
                 instance = operation(kwm_fileobj)
         else:

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Generator
 
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import tobytes, toint_nofloat
+from ..typeutils import tobytes, toint
 
 __all__ = ['make_maskstream', 'xor_half_lower_byte']
 
@@ -19,8 +19,8 @@ def make_maskstream(offset: IntegerLike,
                     table2: BytesLike,
                     tablev2: BytesLike
                     ) -> Generator[int, None, None]:
-    offset = toint_nofloat(offset)
-    length = toint_nofloat(length)
+    offset = toint(offset)
+    length = toint(length)
     if offset < 0:
         raise ValueError("first argument 'offset' must be a non-negative integer")
     if length < 0:

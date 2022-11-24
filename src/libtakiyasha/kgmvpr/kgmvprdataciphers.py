@@ -6,7 +6,7 @@ from typing import Generator, TypedDict
 from .kgmvprmaskutils import make_maskstream, xor_half_lower_byte
 from ..common import StreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
+from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = ['KGMorVPRTables', 'KGMorVPREncryptAlgorithm']
 
@@ -85,7 +85,7 @@ class KGMorVPREncryptAlgorithm(StreamCipherSkel):
         vpr_key: bytes | None = self._vpr_key
         keysize = self.keysize
 
-        offset = toint_nofloat(offset)
+        offset = toint(offset)
         if offset < 0:
             ValueError("second argument 'offset' must be a non-negative integer")
         plaindata = tobytes(plaindata)
@@ -108,7 +108,7 @@ class KGMorVPREncryptAlgorithm(StreamCipherSkel):
         vpr_key: bytes | None = self._vpr_key
         keysize = self.keysize
 
-        offset = toint_nofloat(offset)
+        offset = toint(offset)
         if offset < 0:
             ValueError("second argument 'offset' must be a non-negative integer")
         cipherdata = tobytes(cipherdata)

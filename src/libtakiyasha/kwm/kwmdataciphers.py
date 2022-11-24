@@ -6,7 +6,7 @@ from typing import Generator
 from ..common import StreamCipherSkel
 from ..miscutils import bytestrxor
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import tobytes, toint_nofloat
+from ..typeutils import tobytes, toint
 
 __all__ = ['Mask32']
 
@@ -59,8 +59,8 @@ class Mask32(StreamCipherSkel):
                       length: IntegerLike, /,
                       mask32: BytesLike
                       ) -> Generator[int, None, None]:
-        offset = toint_nofloat(offset)
-        length = toint_nofloat(length)
+        offset = toint(offset)
+        length = toint(length)
         if offset < 0:
             raise ValueError("first argument 'offset' must be a non-negative integer")
         if length < 0:

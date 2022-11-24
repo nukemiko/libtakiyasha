@@ -7,7 +7,7 @@ from typing import Generator
 from .qmcconsts import KEY256_MAPPING
 from ..common import StreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
+from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = [
     'HardenedRC4',
@@ -98,8 +98,8 @@ class Mask128(StreamCipherSkel):
         startblk_len = len(startblk_data)
         commonblk_data = firstblk_data[:-1]  # 普通块：第 65536 字节往后每一个 32767 大小的块
         commonblk_len = len(commonblk_data)
-        offset = toint_nofloat(offset)
-        length = toint_nofloat(length)
+        offset = toint(offset)
+        length = toint(length)
         if offset < 0:
             raise ValueError("first argument 'offset' must be a non-negative integer")
         if length < 0:
@@ -217,9 +217,9 @@ class HardenedRC4(StreamCipherSkel):
                 yield box[(box[j] + box[k]) % key_len]
 
     def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        pending = toint_nofloat(length)
+        pending = toint(length)
         done = 0
-        offset = toint_nofloat(offset)
+        offset = toint(offset)
         if offset < 0:
             raise ValueError("first argument 'offset' must be a non-negative integer")
         if pending < 0:

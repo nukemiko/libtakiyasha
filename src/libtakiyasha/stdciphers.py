@@ -17,7 +17,7 @@ from .common import StreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
-from .typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
+from .typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = [
     'StreamedAESWithModeECB',
@@ -71,8 +71,8 @@ class TEAWithModeECB(CipherSkel):
                  magic_number: IntegerLike = 0x9e3779b9
                  ) -> None:
         self._key = tobytes(key)
-        self._rounds = toint_nofloat(rounds)
-        self._delta = toint_nofloat(magic_number)
+        self._rounds = toint(rounds)
+        self._delta = toint(magic_number)
 
         if len(self._key) != self.blocksize:
             raise ValueError(f"invalid key length: should be {self.blocksize}, not {len(self._key)}")
@@ -166,8 +166,8 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
             magic_number: 加/解密使用的魔数
         """
         key = tobytes(key)
-        rounds = toint_nofloat(rounds)
-        magic_number = toint_nofloat(magic_number)
+        rounds = toint(rounds)
+        magic_number = toint(magic_number)
         if len(key) != self.master_key_size:
             raise ValueError(f"invalid key length {len(key)}: "
                              f"should be {self.master_key_size}, not {len(key)}"
@@ -391,8 +391,8 @@ class ARC4(StreamCipherSkel):
         self._meta_keystream = bytes(meta_keystream)
 
     def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        offset = toint_nofloat(offset)
-        length = toint_nofloat(length)
+        offset = toint(offset)
+        length = toint(length)
         if offset < 0:
             raise ValueError("first argument 'offset' must be a non-negative integer")
         if length < 0:

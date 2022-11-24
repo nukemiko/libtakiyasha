@@ -13,7 +13,7 @@ from ..common import CryptLayerWrappedIOSkel
 from ..exceptions import CrypterCreatingError, CrypterSavingError
 from ..keyutils import make_random_ascii_string
 from ..typedefs import BytesLike, FilePath, IntegerLike
-from ..typeutils import is_filepath, tobytes, toint_nofloat, verify_fileobj
+from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 from ..warns import CrypterCreatingWarning, CrypterSavingWarning
 
 __all__ = [
@@ -63,7 +63,7 @@ class QMCv2QTag:
         master_key_encrypted_b64encoded = b64encode(master_key_encrypted)
 
         return cls(master_key_encrypted_b64encoded,
-                   toint_nofloat(song_id),
+                   toint(song_id),
                    tobytes(unknown_value1)
                    )
 
@@ -101,7 +101,7 @@ class QMCv2STag:
 
     @classmethod
     def new(cls, song_id: IntegerLike, unknown_value1: BytesLike, song_mid: str) -> QMCv2STag:
-        return cls(toint_nofloat(song_id), tobytes(unknown_value1), str(song_mid))
+        return cls(toint(song_id), tobytes(unknown_value1), str(song_mid))
 
 
 class QMCv1(CryptLayerWrappedIOSkel):
@@ -179,7 +179,7 @@ class QMCv1(CryptLayerWrappedIOSkel):
                              f"must be 44, 128 or 256, not {len(master_key)}"
                              )
 
-        if is_filepath(qmcv1_filething):
+        if isfilepath(qmcv1_filething):
             with open(qmcv1_filething, mode='rb') as qmcv1_fileobj:
                 instance = cls(cipher, qmcv1_fileobj.read())
         else:
@@ -211,7 +211,7 @@ class QMCv1(CryptLayerWrappedIOSkel):
                 )
             qmcv1_filething = self.name
 
-        if is_filepath(qmcv1_filething):
+        if isfilepath(qmcv1_filething):
             with open(qmcv1_filething, mode='wb') as qmcv1_fileobj:
                 qmcv1_fileobj.write(self.getvalue(nocryptlayer=True))
         else:
@@ -290,7 +290,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
 
     @song_id.setter
     def song_id(self, value: IntegerLike) -> None:
-        self._song_id = toint_nofloat(value)
+        self._song_id = toint(value)
 
     @song_id.deleter
     def song_id(self) -> None:
@@ -381,7 +381,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
             self._mix_key2 = None
         else:
             self._mix_key2 = tobytes(mix_key2)
-        self._song_id = toint_nofloat(song_id)
+        self._song_id = toint(song_id)
         self._song_mid = str(song_mid)
         self._unknown_value1 = tobytes(unknown_value1)
 
@@ -581,7 +581,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
         if master_key is not None:
             master_key = tobytes(master_key)
 
-        if is_filepath(qmcv2_filething):
+        if isfilepath(qmcv2_filething):
             with open(qmcv2_filething, mode='rb') as qmcv2_fileobj:
                 instance = operation(qmcv2_fileobj)
         else:
@@ -711,7 +711,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
                                 f"not {type(tag_type).__name__}"
                                 )
 
-        master_key_enc_ver = toint_nofloat(master_key_enc_ver)
+        master_key_enc_ver = toint(master_key_enc_ver)
         if simple_key is not None:
             simple_key = tobytes(simple_key)
         if mix_key1 is not None:
@@ -719,7 +719,7 @@ class QMCv2(CryptLayerWrappedIOSkel):
         if mix_key2 is not None:
             mix_key2 = tobytes(mix_key2)
 
-        if is_filepath(qmcv2_filething):
+        if isfilepath(qmcv2_filething):
             with open(qmcv2_filething, mode='wb') as qmcv2_fileobj:
                 operation(qmcv2_fileobj)
         else:
