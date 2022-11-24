@@ -390,13 +390,13 @@ class ARC4(StreamCipherSkel):
 
         self._meta_keystream = bytes(meta_keystream)
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
         offset = toint(offset)
-        length = toint(length)
+        nbytes = toint(nbytes)
         if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
-        if length < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
+            raise ValueError("second argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
 
-        for i in range(offset, offset + length):
+        for i in range(offset, offset + nbytes):
             yield self._meta_keystream[i % 256]

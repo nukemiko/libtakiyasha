@@ -77,7 +77,7 @@ class KGMorVPREncryptAlgorithm(StreamCipherSkel):
                     f"should be {self.keysize}, not {len(self._vpr_key)}"
                 )
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:

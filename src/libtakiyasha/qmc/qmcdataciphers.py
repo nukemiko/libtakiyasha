@@ -84,11 +84,7 @@ class Mask128(StreamCipherSkel):
             raise ValueError(f"invalid mask length: should be 128, got {len(self._mask128)}")
 
     @classmethod
-    def cls_keystream(cls,
-                      offset: IntegerLike,
-                      length: IntegerLike, /,
-                      mask128: BytesLike
-                      ) -> Generator[int, None, None]:
+    def cls_keystream(cls, nbytes: IntegerLike, offset: IntegerLike, /, mask128: BytesLike) -> Generator[int, None, None]:
         mask128: bytes = tobytes(mask128)
         if len(mask128) != 128:
             raise ValueError(f"invalid mask length (should be 128, got {len(mask128)})")
@@ -99,16 +95,16 @@ class Mask128(StreamCipherSkel):
         commonblk_data = firstblk_data[:-1]  # 普通块：第 65536 字节往后每一个 32767 大小的块
         commonblk_len = len(commonblk_data)
         offset = toint(offset)
-        length = toint(length)
+        nbytes = toint(nbytes)
         if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
-        if length < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
+            raise ValueError("second argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
 
         if 0 <= offset < startblk_len:
             max_target_in_startblk_len = startblk_len - offset
-            target_in_commonblk_len = length - max_target_in_startblk_len
-            target_in_startblk_len = min(length, max_target_in_startblk_len)
+            target_in_commonblk_len = nbytes - max_target_in_startblk_len
+            target_in_startblk_len = min(nbytes, max_target_in_startblk_len)
             yield from startblk_data[offset:offset + target_in_startblk_len]
             if target_in_commonblk_len <= 0:
                 return
@@ -116,7 +112,7 @@ class Mask128(StreamCipherSkel):
                 offset = 0
         else:
             offset -= startblk_len
-            target_in_commonblk_len = length
+            target_in_commonblk_len = nbytes
 
         target_offset_in_commonblk = offset % commonblk_len
         if target_offset_in_commonblk == 0:
@@ -133,8 +129,8 @@ class Mask128(StreamCipherSkel):
             yield from commonblk_data
         yield from commonblk_data[:target_after_commonblk_area_len]
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        yield from self.cls_keystream(offset, length, mask128=self._mask128)
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        yield from self.cls_keystream(nbytes, offset, mask128=self._mask128)
 
 
 class HardenedRC4(StreamCipherSkel):
@@ -216,14 +212,14 @@ class HardenedRC4(StreamCipherSkel):
             if i >= 0:
                 yield box[(box[j] + box[k]) % key_len]
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        pending = toint(length)
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        pending = toint(nbytes)
         done = 0
         offset = toint(offset)
         if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
+            raise ValueError("second argument 'offset' must be a non-negative integer")
         if pending < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
 
         def mark(p: int) -> None:
             nonlocal pending, done, offset
@@ -251,4 +247,4 @@ class HardenedRC4(StreamCipherSkel):
             mark(self.common_segment_size)
 
         if pending > 0:
-            yield from self._yield_common_segment_keystream(length - done, offset)
+            yield from self._yield_common_segment_keystream(nbytes - done, offset)

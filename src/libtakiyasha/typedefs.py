@@ -4,7 +4,7 @@ from __future__ import annotations
 import array
 import mmap
 from os import PathLike
-from typing import ByteString, Iterable, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
+from typing import ByteString, Iterable, Iterator, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
 
 __all__ = [
     'T',
@@ -50,7 +50,15 @@ class CipherProto(Protocol):
 
 @runtime_checkable
 class StreamCipherProto(Protocol):
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Iterable[int]:
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Iterator[int]:
+        raise NotImplementedError
+
+    @classmethod
+    def preoperations_plaindata(cls, plaindata: BytesLike, /) -> Iterator[int]:
+        raise NotImplementedError
+
+    @classmethod
+    def preoperations_cipherdata(cls, cipherdata: BytesLike, /) -> Iterator[int]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:

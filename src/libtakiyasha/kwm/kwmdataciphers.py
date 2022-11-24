@@ -54,23 +54,19 @@ class Mask32(StreamCipherSkel):
         self._mask32 = mask_final
 
     @classmethod
-    def cls_keystream(cls,
-                      offset: IntegerLike,
-                      length: IntegerLike, /,
-                      mask32: BytesLike
-                      ) -> Generator[int, None, None]:
+    def cls_keystream(cls, nbytes: IntegerLike, offset: IntegerLike, /, mask32: BytesLike) -> Generator[int, None, None]:
         offset = toint(offset)
-        length = toint(length)
+        nbytes = toint(nbytes)
         if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
-        if length < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
+            raise ValueError("second argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
         maskblk_data: bytes = tobytes(mask32)
         maskblk_len = len(maskblk_data)
         if maskblk_len != 32:
             raise ValueError(f"invalid mask length: should be 32, not {maskblk_len}")
 
-        target_in_maskblk_len = length
+        target_in_maskblk_len = nbytes
         target_offset_in_maskblk = offset % maskblk_len
         if target_offset_in_maskblk == 0:
             target_before_maskblk_area_len = 0
@@ -86,5 +82,5 @@ class Mask32(StreamCipherSkel):
             yield from maskblk_data
         yield from maskblk_data[:target_after_maskblk_area_len]
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        yield from self.cls_keystream(offset, length, self._mask32)
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        yield from self.cls_keystream(nbytes, offset, self._mask32)

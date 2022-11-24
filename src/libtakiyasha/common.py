@@ -45,18 +45,42 @@ class CipherSkel(metaclass=ABCMeta):
 
 
 class StreamCipherSkel(metaclass=ABCMeta):
-    """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 方法。"""
+    """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 方法。
+
+    如果受限于技术原因无法在 ``keystream()`` 中实现逻辑，那么
+    ``keystream()`` 需要引发 ``NotImplementedError``。
+    """
 
     @abstractmethod
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
         """返回一个生成器对象，对其进行迭代，即可得到从起始点
-        ``offset`` 开始，持续一定长度 ``length`` 的密钥流。
+        ``offset`` 开始，持续一定长度 ``nbytes`` 的密钥流。
 
         Args:
             offset: 密钥流的起始点，不应为负数
-            length: 密钥流的长度，不应为负数
+            nbytes: 密钥流的长度，不应为负数
         """
         raise NotImplementedError
+
+    @classmethod
+    def preoperations_plaindata(cls, plaindata: BytesLike, /) -> Generator[int, None, None]:
+        """返回一个生成器对象，对其进行迭代，即可得到对明文 ``plaindata``
+        的每个字节进行特定操作之后的结果。
+
+        Args:
+            plaindata: 要操作的明文
+        """
+        yield from tobytes(plaindata)
+
+    @classmethod
+    def preoperations_cipherdata(cls, cipherdata: BytesLike, /) -> Generator[int, None, None]:
+        """返回一个生成器对象，对其进行迭代，即可得到对密文 ``cipher``
+        的每个字节进行特定操作之后的结果。
+
+        Args:
+            cipherdata: 要操作的密文
+        """
+        yield from tobytes(cipherdata)
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """加密明文 ``plaindata`` 并返回加密结果。
@@ -68,7 +92,9 @@ class StreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        return bytestrxor(plaindata, self.keystream(offset, len(plaindata)))
+        return bytestrxor(self.preoperations_plaindata(plaindata),
+                          self.keystream(len(plaindata), offset)
+                          )
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """解密密文 ``cipherdata`` 并返回解密结果。
@@ -80,7 +106,9 @@ class StreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        return bytestrxor(cipherdata, self.keystream(offset, len(cipherdata)))
+        return bytestrxor(self.preoperations_cipherdata(cipherdata),
+                          self.keystream(len(cipherdata), offset)
+                          )
 
 
 class CryptLayerWrappedIOSkel(io.BytesIO):
@@ -341,7 +369,7 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
         if data == b'':
             return
 
-        keystream = self._cipher.keystream(offset, len(data))
+        keystream = self._cipher.keystream(len(data), offset)
         for databyteord, streambyteord in zip(data, keystream):
             resultbyteord = databyteord ^ streambyteord
             yield resultbyteord
