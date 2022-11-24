@@ -64,7 +64,11 @@ class KeyStreamBasedStreamCipherProto(Protocol):
         raise NotImplementedError
 
     @classmethod
-    def preprocess(cls, operation: Literal['encrypt', 'decrypt'], data: BytesLike, /) -> Iterator[int]:
+    def prexor(cls, operation: Literal['encrypt', 'decrypt'], data: BytesLike, /) -> Iterator[int]:
+        raise NotImplementedError
+
+    @classmethod
+    def postxor(cls, operation: Literal['encrypt', 'decrypt'], data: BytesLike, /) -> Iterator[int]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:

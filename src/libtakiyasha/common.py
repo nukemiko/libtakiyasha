@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from functools import lru_cache
-from typing import Generator, Iterable, Literal
+from typing import Callable, Generator, Iterable, Iterator, Literal, NamedTuple, Type
 
 from .miscutils import bytestrxor
 
@@ -12,7 +12,7 @@ try:
 except ImportError:
     import _pyio as io
 
-from .typedefs import IntegerLike, BytesLike, WritableBuffer
+from .typedefs import IntegerLike, BytesLike, KeyStreamBasedStreamCipherProto, StreamCipherProto, WritableBuffer
 from .typeutils import tobytes, toint
 
 __all__ = [
@@ -63,16 +63,32 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         raise NotImplementedError
 
     @classmethod
-    def preprocess(cls,
-                   operation: Literal['encrypt', 'decrypt'],
-                   data: BytesLike, /
-                   ) -> Generator[int, None, None]:
+    def prexor(cls,
+               operation: Literal['encrypt', 'decrypt'],
+               data: BytesLike, /
+               ) -> Generator[int, None, None]:
         """对目标数据 ``data`` 根据操作 ``operation`` 进行预处理，并返回一个生成器。
         迭代此生成器，即可得到处理后的结果数据。
 
         Args:
             operation: 需要针对的操作，只能是 ``'encrypt'`` 或 ``'decrypt'``
             data: 需要预处理的数据
+        """
+        if operation not in ('encrypt', 'decrypt'):
+            raise ValueError(f"first argument 'operation' must be 'encrypt' or 'decrypt', not {repr(operation)}")
+        yield from tobytes(data)
+
+    @classmethod
+    def postxor(cls,
+                operation: Literal['encrypt', 'decrypt'],
+                data: BytesLike, /
+                ) -> Generator[int, None, None]:
+        """对目标数据 ``data`` 根据操作 ``operation`` 进行后处理，并返回一个生成器。
+        迭代此生成器，即可得到处理后的结果数据。
+
+        Args:
+            operation: 需要针对的操作，只能是 ``'encrypt'`` 或 ``'decrypt'``
+            data: 需要后处理的数据
         """
         if operation not in ('encrypt', 'decrypt'):
             raise ValueError(f"first argument 'operation' must be 'encrypt' or 'decrypt', not {repr(operation)}")
@@ -88,9 +104,11 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        return bytestrxor(self.preprocess('encrypt', plaindata),
-                          self.keystream(len(plaindata), offset)
-                          )
+        return bytes(self.postxor(
+            'encrypt',
+            bytestrxor(self.prexor('encrypt', plaindata), self.keystream(len(plaindata), offset))
+        )
+        )
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """解密密文 ``cipherdata`` 并返回解密结果。
@@ -102,9 +120,11 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        return bytestrxor(self.preprocess('decrypt', cipherdata),
-                          self.keystream(len(cipherdata), offset)
-                          )
+        return bytes(self.postxor(
+            'decrypt',
+            bytestrxor(self.prexor('decrypt', cipherdata), self.keystream(len(cipherdata), offset))
+        )
+        )
 
 
 class CryptLayerWrappedIOSkel(io.BytesIO):
