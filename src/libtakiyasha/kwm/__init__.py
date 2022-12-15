@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import IO
 
 from .kwmdataciphers import Mask32
-from ..common import CryptLayerWrappedIOSkel
 from ..keyutils import make_salt
+from ..prototypes import CryptLayerWrappedIOSkel
 from ..typedefs import BytesLike, FilePath
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 

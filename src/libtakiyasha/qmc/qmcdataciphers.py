@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Generator
 
 from .qmcconsts import KEY256_MAPPING
-from ..common import KeyStreamBasedStreamCipherSkel
+from ..prototypes import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 

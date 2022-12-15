@@ -8,10 +8,10 @@ from dataclasses import asdict, dataclass, field as dcfield
 from secrets import token_bytes
 from typing import Any, IO, Iterable, Mapping, TypedDict
 
-from .common import CryptLayerWrappedIOSkel
 from .exceptions import CrypterCreatingError, CrypterSavingError
 from .keyutils import make_random_ascii_string, make_random_number_string
 from .miscutils import bytestrxor
+from .prototypes import CryptLayerWrappedIOSkel
 from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import isfilepath, tobytes, verify_fileobj

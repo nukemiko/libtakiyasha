@@ -4,9 +4,9 @@ from __future__ import annotations
 from typing import IO, Literal
 
 from .kgmvprdataciphers import KGMorVPREncryptAlgorithm
-from ..common import CryptLayerWrappedIOSkel
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_salt
+from ..prototypes import CryptLayerWrappedIOSkel
 from ..typedefs import BytesLike, FilePath
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 from base64 import b64decode, b64encode
 from math import tan
 
-from ..common import CipherSkel
 from ..exceptions import CipherDecryptingError, CipherEncryptingError
+from ..prototypes import CipherSkel
 from ..stdciphers import TarsCppTCTEAWithModeCBC
 from ..typedefs import BytesLike
 from ..typeutils import tobytes

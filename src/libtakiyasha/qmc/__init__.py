@@ -9,9 +9,9 @@ from typing import IO, Literal
 
 from .qmcdataciphers import HardenedRC4, Mask128
 from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
-from ..common import CryptLayerWrappedIOSkel
 from ..exceptions import CrypterCreatingError, CrypterSavingError
 from ..keyutils import make_random_ascii_string
+from ..prototypes import CryptLayerWrappedIOSkel
 from ..typedefs import BytesLike, FilePath, IntegerLike
 from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 from ..warns import CrypterCreatingWarning, CrypterSavingWarning

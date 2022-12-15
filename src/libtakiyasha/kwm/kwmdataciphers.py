@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Generator
 
-from ..common import KeyStreamBasedStreamCipherSkel
 from ..miscutils import bytestrxor
+from ..prototypes import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import tobytes, toint
 

@@ -13,7 +13,7 @@ from typing import Generator
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import KeyStreamBasedStreamCipherSkel, CipherSkel
+from .prototypes import KeyStreamBasedStreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
