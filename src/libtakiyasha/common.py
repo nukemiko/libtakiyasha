@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
 from functools import lru_cache
-from typing import Callable, Generator, Iterable, Iterator, Literal, NamedTuple, Type
-
-from .miscutils import bytestrxor
+from pathlib import Path
+from random import randint
+from typing import Callable, Generator, Iterable, Iterator, Literal, Type
 
 try:
     import io
@@ -62,38 +62,6 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @classmethod
-    def prexor(cls,
-               operation: Literal['encrypt', 'decrypt'],
-               data: BytesLike, /
-               ) -> Generator[int, None, None]:
-        """对目标数据 ``data`` 根据操作 ``operation`` 进行预处理，并返回一个生成器。
-        迭代此生成器，即可得到处理后的结果数据。
-
-        Args:
-            operation: 需要针对的操作，只能是 ``'encrypt'`` 或 ``'decrypt'``
-            data: 需要预处理的数据
-        """
-        if operation not in ('encrypt', 'decrypt'):
-            raise ValueError(f"first argument 'operation' must be 'encrypt' or 'decrypt', not {repr(operation)}")
-        yield from tobytes(data)
-
-    @classmethod
-    def postxor(cls,
-                operation: Literal['encrypt', 'decrypt'],
-                data: BytesLike, /
-                ) -> Generator[int, None, None]:
-        """对目标数据 ``data`` 根据操作 ``operation`` 进行后处理，并返回一个生成器。
-        迭代此生成器，即可得到处理后的结果数据。
-
-        Args:
-            operation: 需要针对的操作，只能是 ``'encrypt'`` 或 ``'decrypt'``
-            data: 需要后处理的数据
-        """
-        if operation not in ('encrypt', 'decrypt'):
-            raise ValueError(f"first argument 'operation' must be 'encrypt' or 'decrypt', not {repr(operation)}")
-        yield from tobytes(data)
-
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """加密明文 ``plaindata`` 并返回加密结果。
 
@@ -104,11 +72,7 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        return bytes(self.postxor(
-            'encrypt',
-            bytestrxor(self.prexor('encrypt', plaindata), self.keystream(len(plaindata), offset))
-        )
-        )
+        return bytes(pd_byte ^ ks_byte for pd_byte, ks_byte in zip(plaindata, self.keystream(len(plaindata), offset)))
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """解密密文 ``cipherdata`` 并返回解密结果。
@@ -120,11 +84,7 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        return bytes(self.postxor(
-            'decrypt',
-            bytestrxor(self.prexor('decrypt', cipherdata), self.keystream(len(cipherdata), offset))
-        )
-        )
+        return bytes(cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cipherdata, self.keystream(len(cipherdata), offset)))
 
 
 class CryptLayerWrappedIOSkel(io.BytesIO):
@@ -569,3 +529,394 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
         else:
             for line in lines:
                 super().write(line)
+
+
+class EncryptedBytesIOSkel(io.BytesIO):
+    @property
+    def source(self) -> Path | None:
+        """当前对象来源文件的路径。
+
+        在此类的对象中，此属性总是 ``None``。
+
+        如果是通过子类的构造器方法或函数创建的对象，此属性可能会为来源文件的路径，使用 ``Path`` 对象表示。
+        """
+        if hasattr(self, '_name'):
+            return Path(self._name)
+
+    @property
+    def DEFAULT_BUFFER_SIZE(self) -> int:
+        return self._DEFAULT_BUFFER_SIZE
+
+    @DEFAULT_BUFFER_SIZE.setter
+    def DEFAULT_BUFFER_SIZE(self, value: IntegerLike) -> None:
+        bufsize = toint(value)
+        if bufsize <= 0:
+            raise ValueError(f"attribute 'DEFAULT_BUFFER_SIZE' must greater than 0, got {bufsize}")
+        self._DEFAULT_BUFFER_SIZE = bufsize
+
+    @property
+    def ITER_METHOD(self) -> Literal['block', 'line']:
+        return self._ITER_METHOD
+
+    @ITER_METHOD.setter
+    def ITER_METHOD(self, value: Literal['block', 'line']) -> None:
+        if value not in ('block', 'line'):
+            raise ValueError(f"attribute 'ITER_METHOD' must be 'block' or 'line', not {repr(value)}")
+        self._ITER_METHOD = value
+
+    @property
+    def ITER_WITHOUT_CRYPTLAYER(self) -> bool:
+        return self._ITER_WITHOUT_CRYPTLAYER
+
+    @ITER_WITHOUT_CRYPTLAYER.setter
+    def ITER_WITHOUT_CRYPTLAYER(self, value: bool) -> None:
+        self._ITER_WITHOUT_CRYPTLAYER = bool(value)
+
+    # @classmethod
+    # def _verify_streamcipher(cls, obj) -> _StreamCipherProxy:
+    #     keystream_available = False
+    #     can_encrypt = False
+    #     can_decrypt = False
+    #
+    #     if isinstance(obj, KeyStreamBasedStreamCipherProto):
+    #         keystream = obj.keystream
+    #
+    #         # 验证 keystream()
+    #         try:
+    #             method_keystream_result = keystream(1, 1)
+    #         except Exception as exc:
+    #             if not callable(keystream):
+    #                 raise TypeError(f"{type(obj).__name__}.keystream is not callable")
+    #             raise exc
+    #         else:
+    #             if not isinstance(method_keystream_result, Iterator):
+    #                 raise TypeError(
+    #                     f"{type(obj).__name__}.keystream() returned non-iterable object "
+    #                     f"(type {type(method_keystream_result).__name__})"
+    #                 )
+    #             keystream_available = True
+    #     elif not isinstance(obj, StreamCipherProto):
+    #         raise TypeError(
+    #             f"{repr(obj)} is not a stream cipher object: "
+    #             f"missing method 'encrypt()' or 'decrypt()'"
+    #         )
+    #     encrypt: Callable[[BytesLike, IntegerLike], bytes] = obj.encrypt
+    #     decrypt: Callable[[BytesLike, IntegerLike], bytes] = obj.decrypt
+    #
+    #     # 验证 encrypt()
+    #     try:
+    #         encrypt_result = encrypt(bytes([randint(0, 255)]), 1)
+    #     except Exception as exc:
+    #         if not callable(encrypt):
+    #             raise TypeError(f"{type(obj).__name__}.encrypt is not callable")
+    #         raise exc
+    #     else:
+    #         if not isinstance(encrypt_result, bytes):
+    #             raise TypeError(
+    #                 f"{type(obj).__name__}.encrypt() returned non-bytes "
+    #                 f"(type {type(encrypt_result).__name__})"
+    #             )
+    #     # 验证 decrypt()
+    #     try:
+    #         decrypt_result = decrypt(bytes([randint(0, 255)]), 1)
+    #     except Exception as exc:
+    #         if not callable(decrypt):
+    #             raise TypeError(f"{type(obj).__name__}.decrypt is not callable")
+    #         raise exc
+    #     else:
+    #         if not isinstance(decrypt_result, bytes):
+    #             raise TypeError(
+    #                 f"{type(obj).__name__}.decrypt() returned non-bytes "
+    #                 f"(type {type(decrypt_result).__name__})"
+    #             )
+    #
+    #     return
+
+    @classmethod
+    def verify_stream_cipher(cls,
+                             cipher: KeyStreamBasedStreamCipherProto | StreamCipherProto
+                             ) -> tuple[bool, bool, bool]:
+        keystream_available = True
+        encrypt_available = True
+        decrypt_available = True
+        # 验证 keystream()
+        if isinstance(cipher, KeyStreamBasedStreamCipherProto):
+            try:
+                ks = cipher.keystream(randint(0, 255), randint(0, 8191))
+            except NotImplementedError:
+                keystream_available = False
+            except Exception as exc:
+                raise TypeError(f"{repr(cipher)} is not a valid cipher object") from exc
+            else:
+                if not all(map(lambda _: isinstance(_, int), ks)):
+                    raise TypeError(
+                        f"result of {repr(cipher)}.keystream() returns non-int during iterating"
+                    )
+        elif isinstance(cipher, StreamCipherProto):
+            keystream_available = False
+        else:
+            raise TypeError(f"{repr(cipher)} is not a cipher object")
+
+        try:
+            encrypt_result = cipher.encrypt(bytes([randint(0, 255)]), randint(0, 8191))
+        except NotImplementedError:
+            encrypt_available = False
+        except Exception as exc:
+            raise TypeError(f"{repr(cipher)} is not a valid cipher object") from exc
+        else:
+            if not isinstance(encrypt_result, (bytes, bytearray)):
+                raise TypeError(
+                    f"{repr(cipher)}.encrypt() returns non-bytes (type {type(encrypt_result).__name__})"
+                )
+
+        try:
+            decrypt_result = cipher.decrypt(bytes([randint(0, 255)]), randint(0, 8191))
+        except NotImplementedError:
+            decrypt_available = False
+        except Exception as exc:
+            raise TypeError(f"{repr(cipher)} is not a valid cipher object") from exc
+        else:
+            if not isinstance(decrypt_result, (bytes, bytearray)):
+                raise TypeError(
+                    f"{repr(cipher)}.decrypt() returns non-bytes (type {type(decrypt_result).__name__})"
+                )
+
+        return encrypt_available, decrypt_available, keystream_available
+
+    @property
+    def acceptable_ciphers(self) -> list[Type[StreamCipherProto] | Type[KeyStreamBasedStreamCipherProto]]:
+        return []
+
+    def __init__(self,
+                 cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
+                 initial_bytes: BytesLike = b''
+                 ) -> None:
+        super().__init__(tobytes(initial_bytes))
+        self._encrypt_available, self._decrypt_available, self._keystream_available = self.verify_stream_cipher(cipher)
+        self._cipher = cipher
+        if self.acceptable_ciphers:
+            if not isinstance(self._cipher, tuple(self.acceptable_ciphers)):
+                if len(self.acceptable_ciphers) == 1:
+                    raise TypeError(
+                        f"first argument 'cipher' must be {self.acceptable_ciphers[0].__name__}, "
+                        f"not {type(self._cipher).__name__}"
+                    )
+                else:
+                    supported_ciphers_str = ', '.join(
+                        _.__name__ for _ in self.acceptable_ciphers[:-1]
+                    ) + f'or {self.acceptable_ciphers[-1].__name__}'
+                    raise TypeError(
+                        f"first argument 'cipher' must in {supported_ciphers_str}, "
+                        f"not {type(self._cipher).__name__}"
+                    )
+
+        self._DEFAULT_BUFFER_SIZE = io.DEFAULT_BUFFER_SIZE
+        self._ITER_METHOD: Literal['block', 'line'] = 'block'
+        self._ITER_WITHOUT_CRYPTLAYER = False
+
+    def _iterencrypt(self, plaindata: bytes, offset: int, /) -> Generator[int, None, None]:
+        encrypt = self._cipher.encrypt
+        iterprexor_plaindata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_plaindata', None)
+
+        if not self._keystream_available:
+            yield from encrypt(plaindata, offset)
+        elif iterprexor_plaindata:
+            keystream = self._cipher.keystream
+            for prexor_pb_byte, ks_byte in zip(iterprexor_plaindata(plaindata), keystream(len(plaindata), offset)):
+                yield prexor_pb_byte ^ ks_byte
+        else:
+            keystream = self._cipher.keystream
+            for pd_byte, ks_byte in zip(plaindata, keystream(len(plaindata), offset)):
+                yield pd_byte ^ ks_byte
+
+    def _iterdecrypt(self, cipherdata: bytes, offset: int, /) -> Generator[int, None, None]:
+        decrypt = self._cipher.decrypt
+        iterprexor_cipherdata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_cipherdata', None)
+
+        if not cipherdata:
+            return
+
+        if not self._keystream_available:
+            yield from iter(decrypt(cipherdata, offset))
+        elif iterprexor_cipherdata:
+            keystream = self._cipher.keystream
+            for prexor_cd_byte, ks_byte in zip(iterprexor_cipherdata(cipherdata), keystream(len(cipherdata), offset)):
+                yield prexor_cd_byte ^ ks_byte
+        else:
+            keystream = self._cipher.keystream
+            for cd_byte, ks_byte in zip(cipherdata, keystream(len(cipherdata), offset)):
+                yield cd_byte ^ ks_byte
+
+    def _iterdecrypt_untilnl(self, cipherdata: bytes, offset: int, /) -> Generator[int, None, None]:
+        decrypt = self._cipher.decrypt
+        iterprexor_cipherdata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_cipherdata', None)
+
+        if not cipherdata:
+            return
+
+        if not self._keystream_available:
+            for pd_byte in iter(decrypt(cipherdata, offset)):
+                yield pd_byte
+                if pd_byte == 10:
+                    return
+        elif iterprexor_cipherdata:
+            keystream = self._cipher.keystream
+            for prexor_cd_byte, ks_byte in zip(iterprexor_cipherdata(cipherdata), keystream(len(cipherdata), offset)):
+                yld = prexor_cd_byte ^ ks_byte
+                yield yld
+                if yld == 10:
+                    return
+        else:
+            keystream = self._cipher.keystream
+            for cd_byte, ks_byte in zip(cipherdata, keystream(len(cipherdata), offset)):
+                yld = cd_byte ^ ks_byte
+                yield yld
+                if yld == 10:
+                    return
+
+    def getbuffer(self, nocryptlayer: bool = False) -> memoryview:
+        if nocryptlayer:
+            return super().getbuffer()
+        else:
+            raise NotImplementedError('memoryview with crypt layer is not supported')
+
+    def getvalue(self, nocryptvalue: bool = False) -> bytes:
+        if nocryptvalue:
+            return super().getvalue()
+        else:
+            return bytes(self._iterdecrypt(super().getvalue(), 0))
+
+    def read(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        if nocryptlayer:
+            return super().read(size)
+        else:
+            curpos = self.tell()
+            if size is None:
+                size = -1
+            else:
+                size = toint(size)
+            if size < 0:
+                target_data = super().getvalue()[curpos:]
+            else:
+                target_data = super().getvalue()[curpos:curpos + size]
+
+            result = bytes(self._iterdecrypt(target_data, curpos))
+            self.seek(curpos + len(result), 0)
+
+            return result
+
+    def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        return self.read(size, nocryptlayer)
+
+    def readline(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        if nocryptlayer:
+            return super().readline(size)
+        else:
+            curpos = self.tell()
+            if size is None:
+                size = -1
+            else:
+                size = toint(size)
+            if size < 0:
+                blksize = self._DEFAULT_BUFFER_SIZE
+                results = []
+                while 1:
+                    target_data = super().getvalue()[curpos:curpos + blksize]
+                    if not target_data:
+                        return b''
+                    result_data = bytes(self._iterdecrypt_untilnl(target_data, curpos))
+                    self.seek(curpos + len(result_data), 0)
+                    curpos += len(result_data)
+                    results.append(result_data)
+                    if len(result_data) != len(target_data):
+                        return b''.join(results)
+            else:
+                target_data = super().getvalue()[curpos:curpos + size]
+
+                result = bytes(
+                    self._iterdecrypt_untilnl(target_data, curpos)
+                )
+                self.seek(curpos + len(result), 0)
+
+            return result
+
+    def readlines(self,
+                  hint: IntegerLike | None = None, /,
+                  nocryptlayer: bool = False
+                  ) -> list[bytes]:
+        if nocryptlayer:
+            return super().readlines(hint)
+        else:
+            curpos = self.tell()
+            max_read_size = len(super().getvalue()[curpos:])
+            if hint is None:
+                hint = -1
+            else:
+                hint = toint(hint)
+            if hint < 0:
+                read_size = max_read_size
+            else:
+                read_size = min(hint, max_read_size)
+
+            nbytes = 0
+            lines = []
+            while 1:
+                line = self.readline()
+                lines.append(line)
+                nbytes += len(line)
+                if nbytes >= read_size:
+                    break
+
+            return lines
+
+    def readinto(self, buffer: WritableBuffer, /, nocryptlayer: bool = False) -> int:
+        if nocryptlayer:
+            return super().readinto(buffer)
+        else:
+            if not isinstance(buffer, memoryview):
+                buffer = memoryview(buffer)
+            buffer = buffer.cast('B')
+
+            data = self.read(len(buffer))
+            data_len = len(data)
+
+            buffer[:data_len] = data
+
+            return data_len
+
+    def readinto1(self, buffer: WritableBuffer, /, nocryptlayer: bool = False) -> int:
+        return self.readinto(buffer, nocryptlayer)
+
+    def write(self, data: BytesLike, /, nocryptlayer: bool = False) -> int:
+        if nocryptlayer:
+            return super().write(data)
+        else:
+            curpos = self.tell()
+            return super().write(
+                bytes(
+                    self._iterencrypt(tobytes(data), curpos)
+                )
+            )
+
+    def writelines(self, lines: Iterable[BytesLike], /, nocryptlayer: bool = False) -> None:
+        for data in lines:
+            self.write(data, nocryptlayer)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> bytes:
+        if self._ITER_METHOD == 'line':
+            ret = self.readline(nocryptlayer=self._ITER_WITHOUT_CRYPTLAYER)
+            if not ret:
+                raise StopIteration
+            return ret
+        elif self._ITER_METHOD == 'block':
+            ret = self.read(self._DEFAULT_BUFFER_SIZE, nocryptlayer=self._ITER_WITHOUT_CRYPTLAYER)
+            if not ret:
+                raise StopIteration
+            return ret
+        else:
+            raise ValueError(
+                f"attribute 'ITER_METHOD' must be 'block' or 'line', not {repr(self._ITER_METHOD)}"
+            )

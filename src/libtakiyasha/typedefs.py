@@ -4,7 +4,7 @@ from __future__ import annotations
 import array
 import mmap
 from os import PathLike
-from typing import ByteString, Iterable, Iterator, Literal, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
+from typing import ByteString, Iterable, Iterator, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
 
 __all__ = [
     'T',
@@ -61,14 +61,6 @@ class StreamCipherProto(Protocol):
 @runtime_checkable
 class KeyStreamBasedStreamCipherProto(Protocol):
     def keystream(self, nbytes: IntegerLike, offset: IntegerLike = 0, /) -> Iterator[int]:
-        raise NotImplementedError
-
-    @classmethod
-    def prexor(cls, operation: Literal['encrypt', 'decrypt'], data: BytesLike, /) -> Iterator[int]:
-        raise NotImplementedError
-
-    @classmethod
-    def postxor(cls, operation: Literal['encrypt', 'decrypt'], data: BytesLike, /) -> Iterator[int]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
