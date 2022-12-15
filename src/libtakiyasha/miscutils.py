@@ -75,6 +75,9 @@ def bytestrxor(term1: BytesLike, term2: BytesLike, /) -> bytes:
     bytestring2 = tobytes(term2)
 
     if len(bytestring1) != len(bytestring2):
-        raise ValueError('only byte strings of equal length can be xored')
+        raise ValueError(
+            'only byte strings of equal length can be xored: '
+            f'term 1 ({len(bytestring1)}) != term 2 ({len(bytestring2)})'
+        )
 
     return bytes(b1 ^ b2 for b1, b2 in zip(bytestring1, bytestring2))
