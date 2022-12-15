@@ -18,7 +18,8 @@ from .typeutils import tobytes, toint
 __all__ = [
     'CipherSkel',
     'KeyStreamBasedStreamCipherSkel',
-    'CryptLayerWrappedIOSkel'
+    'CryptLayerWrappedIOSkel',
+    'EncryptedBytesIOSkel'
 ]
 
 
@@ -780,8 +781,8 @@ class EncryptedBytesIOSkel(io.BytesIO):
         else:
             raise NotImplementedError('memoryview with crypt layer is not supported')
 
-    def getvalue(self, nocryptvalue: bool = False) -> bytes:
-        if nocryptvalue:
+    def getvalue(self, nocryptlayer: bool = False) -> bytes:
+        if nocryptlayer:
             return super().getvalue()
         else:
             return bytes(self._iterdecrypt(super().getvalue(), 0))
