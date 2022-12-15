@@ -573,66 +573,6 @@ class EncryptedBytesIOSkel(io.BytesIO):
     def ITER_WITHOUT_CRYPTLAYER(self, value: bool) -> None:
         self._ITER_WITHOUT_CRYPTLAYER = bool(value)
 
-    # @classmethod
-    # def _verify_streamcipher(cls, obj) -> _StreamCipherProxy:
-    #     keystream_available = False
-    #     can_encrypt = False
-    #     can_decrypt = False
-    #
-    #     if isinstance(obj, KeyStreamBasedStreamCipherProto):
-    #         keystream = obj.keystream
-    #
-    #         # 验证 keystream()
-    #         try:
-    #             method_keystream_result = keystream(1, 1)
-    #         except Exception as exc:
-    #             if not callable(keystream):
-    #                 raise TypeError(f"{type(obj).__name__}.keystream is not callable")
-    #             raise exc
-    #         else:
-    #             if not isinstance(method_keystream_result, Iterator):
-    #                 raise TypeError(
-    #                     f"{type(obj).__name__}.keystream() returned non-iterable object "
-    #                     f"(type {type(method_keystream_result).__name__})"
-    #                 )
-    #             keystream_available = True
-    #     elif not isinstance(obj, StreamCipherProto):
-    #         raise TypeError(
-    #             f"{repr(obj)} is not a stream cipher object: "
-    #             f"missing method 'encrypt()' or 'decrypt()'"
-    #         )
-    #     encrypt: Callable[[BytesLike, IntegerLike], bytes] = obj.encrypt
-    #     decrypt: Callable[[BytesLike, IntegerLike], bytes] = obj.decrypt
-    #
-    #     # 验证 encrypt()
-    #     try:
-    #         encrypt_result = encrypt(bytes([randint(0, 255)]), 1)
-    #     except Exception as exc:
-    #         if not callable(encrypt):
-    #             raise TypeError(f"{type(obj).__name__}.encrypt is not callable")
-    #         raise exc
-    #     else:
-    #         if not isinstance(encrypt_result, bytes):
-    #             raise TypeError(
-    #                 f"{type(obj).__name__}.encrypt() returned non-bytes "
-    #                 f"(type {type(encrypt_result).__name__})"
-    #             )
-    #     # 验证 decrypt()
-    #     try:
-    #         decrypt_result = decrypt(bytes([randint(0, 255)]), 1)
-    #     except Exception as exc:
-    #         if not callable(decrypt):
-    #             raise TypeError(f"{type(obj).__name__}.decrypt is not callable")
-    #         raise exc
-    #     else:
-    #         if not isinstance(decrypt_result, bytes):
-    #             raise TypeError(
-    #                 f"{type(obj).__name__}.decrypt() returned non-bytes "
-    #                 f"(type {type(decrypt_result).__name__})"
-    #             )
-    #
-    #     return
-
     @classmethod
     def verify_stream_cipher(cls,
                              cipher: KeyStreamBasedStreamCipherProto | StreamCipherProto
