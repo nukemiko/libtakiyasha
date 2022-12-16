@@ -533,6 +533,14 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
 
 class EncryptedBytesIOSkel(io.BytesIO):
+    def __repr__(self) -> str:
+        reprstr_seq = [f'<{self.__module__}.{self.__class__.__name__} at {hex(id(self))}']
+        if self.source is not None:
+            reprstr_seq.append(f", source '{str(self.source)}'")
+        reprstr_seq.append('>')
+
+        return ''.join(reprstr_seq)
+
     @property
     def source(self) -> Path | None:
         """当前对象来源文件的路径。
