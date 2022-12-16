@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Iterable, Mapping
 
 from .typedefs import BytesLike, KT, T, VT
 from .typeutils import tobytes
 
 __all__ = [
+    'BINARIES_ROOTDIR',
     'bytestrxor',
     'getattribute'
 ]
+
+BINARIES_ROOTDIR = Path(__file__).parent / 'binaries'
 
 
 def getattribute(obj: object,

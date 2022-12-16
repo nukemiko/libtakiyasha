@@ -5,13 +5,16 @@ import json
 import warnings
 from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
+from pathlib import Path
 from secrets import token_bytes
-from typing import Any, IO, Iterable, Mapping, TypedDict
+from typing import Any, Callable, IO, Iterable, Literal, Mapping, NamedTuple, Type, TypedDict
+
+from mutagen import flac, id3
 
 from .exceptions import CrypterCreatingError, CrypterSavingError
 from .keyutils import make_random_ascii_string, make_random_number_string
-from .miscutils import bytestrxor
-from .prototypes import CryptLayerWrappedIOSkel
+from .miscutils import BINARIES_ROOTDIR, bytestrxor
+from .prototypes import CryptLayerWrappedIOSkel, EncryptedBytesIOSkel
 from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import isfilepath, tobytes, verify_fileobj
@@ -19,6 +22,7 @@ from .warns import CrypterCreatingWarning
 
 __all__ = ['CloudMusicIdentifier', 'NCM']
 
+MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 _TAG_KEY = b'\x23\x31\x34\x6c\x6a\x6b\x5f\x21\x5c\x5d\x26\x30\x55\x3c\x27\x28'
 
 MutagenStyleDict = TypedDict(
@@ -396,3 +400,263 @@ class NCM(CryptLayerWrappedIOSkel):
                                          verify_writable=True
                                          )
             operation(ncm_fileobj)
+
+
+@dataclass
+class NewCloudMusicIdentifier:
+    format: str = ''
+    musicId: str = ''
+    musicName: str = ''
+    artist: list[list[str | int]] = dcfield(default_factory=list)
+    album: str = ''
+    albumId: int = 0
+    albumPicDocId: int = 0
+    albumPic: str = ''
+    mvId: int = 0
+    flag: int = 0
+    bitrate: int = 0
+    duration: int = 0
+    gain: float = 0.0
+    mp3DocId: str = ''
+    alias: list[str] = dcfield(default_factory=list)
+    transNames: list[str] = dcfield(default_factory=list)
+
+    def to_mutagen_tag(self, tag_type: Literal['FLAC', 'ID3'] = None) -> flac.FLAC | id3.ID3:
+        if tag_type is None:
+            if self.format.lower() == 'flac':
+                tag_type = 'FLAC'
+            elif self.format.lower() == 'mp3':
+                tag_type = 'ID3'
+            else:
+                raise ValueError(
+                    "don't know which type of tag is needed: "
+                    "self.format and 'tag_type' are empty"
+                )
+        if tag_type == 'FLAC':
+            with open(MODULE_BINARIES_ROOTDIR / 'empty.flac', mode='rb') as _f:
+                # 受 mutagen 功能限制，编辑 FLAC 标签之前必须打开一个空 FLAC 文件
+                tag: flac.FLAC | id3.ID3 = flac.FLAC(_f)
+            keymaps = {
+                'musicName': ('title', lambda _: [_]),
+                'artist'   : ('artist', lambda _: list(str(list(__)[0]) for __ in list(_))),
+                'album'    : ('album', lambda _: [_])
+            }
+        elif tag_type == 'ID3':
+            tag: flac.FLAC | id3.ID3 = id3.ID3()
+            keymaps = {
+                'musicName': ('TIT2', lambda _: id3.TIT2(text=[_], encoding=3)),
+                'artist'   : ('TPE1', lambda _: id3.TPE1(text=list(str(list(__)[0]) for __ in list(_)), encoding=3)),
+                'album'    : ('TALB', lambda _: id3.TALB(text=[_], encoding=3))
+            }
+        else:
+            raise ValueError(
+                f"'tag_type' must be 'FLAC', 'ID3', or None, not {repr(tag_type)}"
+            )
+
+        tagkey_constructor: tuple[str, Callable[[str], list[str]] | Callable[[str], id3.Frame]]
+        for attrname, tagkey_constructor in keymaps.items():
+            tagkey, constructor = tagkey_constructor
+            attr = getattr(self, attrname)
+            if attr:
+                tag[tagkey] = constructor(attr)
+
+        return tag
+
+    @classmethod
+    def from_ncm_163key(cls, ncm_163key: str | BytesLike, tag_key: BytesLike = None):
+        if isinstance(ncm_163key, str):
+            ncm_163key = bytes(ncm_163key, encoding='utf-8')
+        else:
+            ncm_163key = tobytes(ncm_163key)
+        if tag_key is None:
+            tag_key = _TAG_KEY
+        else:
+            tag_key = tobytes(tag_key)
+
+        ncm_tag_serialized_encrypted_encoded = ncm_163key[22:]  # 去除开头的 b"163 key(Don't modify):"
+        ncm_tag_serialized_encrypted = b64decode(ncm_tag_serialized_encrypted_encoded, validate=True)
+        ncm_tag_serialized = StreamedAESWithModeECB(tag_key).decrypt(
+            ncm_tag_serialized_encrypted
+        )[6:]  # 去除字节串开头的 b'music:'
+
+        return cls(**json.loads(ncm_tag_serialized))
+
+
+class NCMFileInfo(NamedTuple):
+    master_key_encrypted: bytes
+    ncm_163key: bytes
+    cipher_ctor: Callable[[...], ARC4]
+    cipher_data_offset: int
+    cipher_data_len: int
+    cover_data_offset: int
+    cover_data_len: int
+
+
+def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
+    def operation(fd: IO[bytes]) -> NCMFileInfo | None:
+        fd.seek(0, 0)
+
+        if not fd.read(10).startswith(b'CTENFDAM'):
+            return
+
+        master_key_encrypted_xored_len = int.from_bytes(fd.read(4), 'little')
+        master_key_encrypted_xored = fd.read(master_key_encrypted_xored_len)
+        master_key_encrypted = bytestrxor(b'd' * master_key_encrypted_xored_len,
+                                          master_key_encrypted_xored
+                                          )
+
+        ncm_163key_xored_len = int.from_bytes(fd.read(4), 'little')
+        ncm_163key_xored = fd.read(ncm_163key_xored_len)
+        ncm_163key = bytestrxor(b'c' * ncm_163key_xored_len, ncm_163key_xored)
+
+        fd.seek(5, 1)
+
+        cover_space_len = int.from_bytes(fd.read(4), 'little')
+        cover_data_len = int.from_bytes(fd.read(4), 'little')
+        if cover_space_len - cover_data_len < 0:
+            raise CrypterCreatingError(f'file structure error: '
+                                       f'cover space length ({cover_space_len}) '
+                                       f'< cover data length ({cover_data_len})'
+                                       )
+        cover_data_offset = fd.tell()
+        cipher_data_offset = fd.seek(cover_space_len, 1)
+        cipher_data_len = fd.seek(0, 2) - cipher_data_offset
+
+        return NCMFileInfo(
+            master_key_encrypted=master_key_encrypted,
+            ncm_163key=ncm_163key,
+            cipher_ctor=ARC4,
+            cipher_data_offset=cipher_data_offset,
+            cipher_data_len=cipher_data_len,
+            cover_data_offset=cover_data_offset,
+            cover_data_len=cover_data_len
+        )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return Path(filething), operation(fileobj)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return fileobj, prs
+
+
+class NewNCM(EncryptedBytesIOSkel):
+    @classmethod
+    def from_file(cls,
+                  file_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
+                  core_key: BytesLike,
+                  tag_key: BytesLike = None
+                  ):
+        return cls.open(file_or_info, core_key=core_key, tag_key=tag_key)
+
+    @classmethod
+    def open(cls,
+             filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
+             core_key: BytesLike,
+             tag_key: BytesLike = None
+             ):
+        core_key = tobytes(core_key)
+        if tag_key is None:
+            tag_key = _TAG_KEY
+        else:
+            tag_key = tobytes(tag_key)
+
+        def operation(fd: IO[bytes]) -> cls:
+            master_key = StreamedAESWithModeECB(core_key).decrypt(
+                fileinfo.master_key_encrypted
+            )[17:]  # 去除开头的 b'neteasecloudmusic'
+            cipher = fileinfo.cipher_ctor(master_key)
+
+            try:
+                ncm_tag = NewCloudMusicIdentifier.from_ncm_163key(
+                    ncm_163key=fileinfo.ncm_163key,
+                    tag_key=tag_key
+                )
+            except Exception as exc:
+                warnings.warn(f'skip parsing 163key, because an exception was raised while parsing: '
+                              f'{type(exc).__name__}: {exc}',
+                              CrypterCreatingWarning
+                              )
+                warnings.warn(f"you may need to check if the file {repr(filething)} "
+                              f"is corrupted.",
+                              CrypterCreatingWarning
+                              )
+                ncm_tag = None
+
+            fd.seek(fileinfo.cover_data_offset, 0)
+            cover_data = fd.read(fileinfo.cover_data_len)
+
+            fd.seek(fileinfo.cipher_data_offset, 0)
+            initial_bytes = fd.read(fileinfo.cipher_data_len)
+
+            inst = cls(cipher, initial_bytes)
+            inst._cover_data = cover_data
+            inst._ncm_tag = ncm_tag
+
+            return inst
+
+        if isinstance(filething_or_info, tuple):
+            filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None]
+            if len(filething_or_info) != 2:
+                raise TypeError(
+                    "first argument 'filething_or_info' must be a file path, a file object, "
+                    "or a tuple of probe() returns"
+                )
+            filething, fileinfo = filething_or_info
+            if fileinfo is None:
+                raise CrypterCreatingError(
+                    f"{repr(filething)} is not a NCM file"
+                )
+        else:
+            filething, fileinfo = probe(filething_or_info)
+
+        if isfilepath(filething):
+            with open(filething, mode='rb') as fileobj:
+                instance = operation(fileobj)
+                instance._name = Path(filething)
+        else:
+            fileobj = verify_fileobj(filething, 'binary',
+                                     verify_readable=True,
+                                     verify_seekable=True
+                                     )
+            fileobj_sourcefile = getattr(fileobj, 'name', None)
+            instance = operation(fileobj)
+
+            if fileobj_sourcefile is not None:
+                instance._name = Path(fileobj_sourcefile)
+
+        return instance
+
+    @property
+    def acceptable_ciphers(self) -> list[Type[ARC4]]:
+        return [ARC4]
+
+    def __init__(self, cipher: ARC4, /, initial_bytes=b''):
+        super().__init__(cipher, initial_bytes=initial_bytes)
+
+        self._cover_data: bytes | None = None
+        self._ncm_tag: NewCloudMusicIdentifier = NewCloudMusicIdentifier()
+        self._sourcefile: Path | None = None
+
+    @property
+    def cover_data(self) -> bytes | None:
+        return self._cover_data
+
+    @cover_data.setter
+    def cover_data(self, value: BytesLike) -> None:
+        self._cover_data = tobytes(value)
+
+    @cover_data.deleter
+    def cover_data(self) -> None:
+        self._cover_data = None
+
+    @property
+    def ncm_tag(self) -> NewCloudMusicIdentifier:
+        return self._ncm_tag
