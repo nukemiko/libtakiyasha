@@ -354,10 +354,6 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
 
 
 class ARC4(KeyStreamBasedStreamCipherSkel):
-    @property
-    def master_key(self) -> bytes:
-        return self._key
-
     def __init__(self, key: BytesLike, /) -> None:
         """标准的 RC4 加密算法实现。
 
@@ -389,6 +385,18 @@ class ARC4(KeyStreamBasedStreamCipherSkel):
             meta_keystream[idx] = K
 
         self._meta_keystream = bytes(meta_keystream)
+
+    def getkey(self, keyname: str = 'master') -> bytes:
+        if keyname == 'master':
+            return self._key
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
 
     def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
         offset = toint(offset)
