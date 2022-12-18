@@ -26,6 +26,9 @@ __all__ = [
 class CipherSkel(metaclass=ABCMeta):
     """适用于一般加密算法的框架类。子类必须实现 ``encrypt()`` 和 ``decrypt()`` 方法。"""
 
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        raise NotImplementedError
+
     @abstractmethod
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         """加密明文 ``plaindata`` 并返回加密结果。
@@ -51,6 +54,9 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
     如果受限于技术原因无法在 ``keystream()`` 中实现逻辑，那么
     ``keystream()`` 需要引发 ``NotImplementedError``。
     """
+
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        raise NotImplementedError
 
     @abstractmethod
     def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
@@ -534,7 +540,10 @@ class CryptLayerWrappedIOSkel(io.BytesIO):
 
 class EncryptedBytesIOSkel(io.BytesIO):
     def __repr__(self) -> str:
-        reprstr_seq = [f'<{self.__module__}.{self.__class__.__name__} at {hex(id(self))}']
+        reprstr_seq = [
+            f'<{self.__module__}.{self.__class__.__name__} at {hex(id(self))}, '
+            f'cipher {repr(self.cipher)}'
+        ]
         if self.source is not None:
             reprstr_seq.append(f", source '{str(self.source)}'")
         reprstr_seq.append('>')
@@ -551,6 +560,14 @@ class EncryptedBytesIOSkel(io.BytesIO):
         """
         if hasattr(self, '_name'):
             return Path(self._name)
+
+    @property
+    def cipher(self) -> StreamCipherProto | KeyStreamBasedStreamCipherProto:
+        return self._cipher
+
+    @property
+    def master_key(self) -> bytes | None:
+        return self._cipher.getkey('master')
 
     @property
     def DEFAULT_BUFFER_SIZE(self) -> int:

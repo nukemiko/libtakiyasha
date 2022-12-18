@@ -42,6 +42,9 @@ FilePath = Union[str, bytes, bytearray, PathLike]
 
 @runtime_checkable
 class CipherProto(Protocol):
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        raise NotImplementedError
+
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         raise NotImplementedError
 
@@ -51,6 +54,9 @@ class CipherProto(Protocol):
 
 @runtime_checkable
 class StreamCipherProto(Protocol):
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        raise NotImplementedError
+
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         raise NotImplementedError
 
@@ -60,6 +66,9 @@ class StreamCipherProto(Protocol):
 
 @runtime_checkable
 class KeyStreamBasedStreamCipherProto(Protocol):
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        raise NotImplementedError
+
     def keystream(self, nbytes: IntegerLike, offset: IntegerLike = 0, /) -> Iterator[int]:
         raise NotImplementedError
 
@@ -72,6 +81,10 @@ class KeyStreamBasedStreamCipherProto(Protocol):
 
 @runtime_checkable
 class StreamCipherBasedCryptedIOProto(Protocol):
+    @property
+    def cipher(self) -> StreamCipherProto | KeyStreamBasedStreamCipherProto:
+        raise NotImplementedError
+
     def read(self, size: IntegerLike = -1, /) -> bytes:
         raise NotImplementedError
 
