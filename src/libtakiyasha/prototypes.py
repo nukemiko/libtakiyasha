@@ -563,14 +563,20 @@ class EncryptedBytesIOSkel(io.BytesIO):
 
     @property
     def cipher(self) -> StreamCipherProto | KeyStreamBasedStreamCipherProto:
+        """加解密内置缓冲区数据使用的 Cipher 实例。"""
         return self._cipher
 
     @property
     def master_key(self) -> bytes | None:
+        """主密钥。"""
         return self._cipher.getkey('master')
 
     @property
     def DEFAULT_BUFFER_SIZE(self) -> int:
+        """迭代本对象时，每次迭代返回的数据大小。
+
+        此值必须是一个非零正整数。使用其他值会引发 ``ValueError``。
+        """
         return self._DEFAULT_BUFFER_SIZE
 
     @DEFAULT_BUFFER_SIZE.setter
@@ -582,6 +588,10 @@ class EncryptedBytesIOSkel(io.BytesIO):
 
     @property
     def ITER_METHOD(self) -> Literal['block', 'line']:
+        """迭代本对象时使用的迭代模式：按行迭代（``line``）或按固定大小迭代（``block``）。
+
+        仅接受以上两个值，使用其他值会引发 ``ValueError``。
+        """
         return self._ITER_METHOD
 
     @ITER_METHOD.setter
@@ -592,6 +602,7 @@ class EncryptedBytesIOSkel(io.BytesIO):
 
     @property
     def ITER_WITHOUT_CRYPTLAYER(self) -> bool:
+        """迭代本对象时，是否直接返回加密数据，而不进行解密。"""
         return self._ITER_WITHOUT_CRYPTLAYER
 
     @ITER_WITHOUT_CRYPTLAYER.setter
@@ -651,6 +662,9 @@ class EncryptedBytesIOSkel(io.BytesIO):
 
     @property
     def acceptable_ciphers(self) -> list[Type[StreamCipherProto] | Type[KeyStreamBasedStreamCipherProto]]:
+        """``__init__()`` 的第一个参数 ``cipher`` 可接受的对象类型。
+        在此列表之外的类型会导致 ``__init__()`` 抛出 ``TypeError``。
+        """
         return []
 
     def __init__(self,
