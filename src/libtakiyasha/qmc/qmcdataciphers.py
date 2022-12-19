@@ -9,21 +9,80 @@ from ..prototypes import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
 from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
-__all__ = [
-    'HardenedRC4',
-    'Mask128'
-]
-
 
 class Mask128(KeyStreamBasedStreamCipherSkel):
-    @property
-    def original_master_key(self) -> bytes | None:
-        if hasattr(self, '_original_master_key'):
-            return self._original_master_key
+    def __init__(self, mask128: BytesLike, /):
+        self._mask128 = tobytes(mask128)
+        if len(self._mask128) != 128:
+            raise ValueError(f"invalid mask length: should be 128, got {len(self._mask128)}")
 
-    @property
-    def mask128(self) -> bytes:
-        return self._mask128
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._mask128
+        elif keyname == 'original':
+            return getattr(self, '_original_qmcv2_key256', None)
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master' or 'original', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
+
+    @classmethod
+    def cls_keystream(cls,
+                      mask128: BytesLike,
+                      nbytes: IntegerLike,
+                      offset: IntegerLike, /
+                      ) -> Generator[int, None, None]:
+        mask = tobytes(mask128)
+        if len(mask) != 128:
+            raise ValueError(f"invalid mask length: should be 128, got {len(mask)}")
+        nbytes = toint(nbytes)
+        offset = toint(offset)
+        if offset < 0:
+            raise ValueError("second argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
+
+        firstblk_data = mask * 256  # 前 32768 字节
+        secondblk_data = firstblk_data[1:-1]  # 第 32769 至 65535 字节
+        startblk_data = firstblk_data + secondblk_data  # 初始块：前 65535 字节
+        startblk_len = len(startblk_data)
+        commonblk_data = firstblk_data[:-1]  # 普通块：第 65536 字节往后每一个 32767 大小的块
+        commonblk_len = len(commonblk_data)
+
+        if 0 <= offset < startblk_len:
+            max_target_in_startblk_len = startblk_len - offset
+            target_in_commonblk_len = nbytes - max_target_in_startblk_len
+            target_in_startblk_len = min(nbytes, max_target_in_startblk_len)
+            yield from startblk_data[offset:offset + target_in_startblk_len]
+            if target_in_commonblk_len <= 0:
+                return
+            else:
+                offset = 0
+        else:
+            offset -= startblk_len
+            target_in_commonblk_len = nbytes
+
+        target_offset_in_commonblk = offset % commonblk_len
+        if target_offset_in_commonblk == 0:
+            target_before_commonblk_area_len = 0
+        else:
+            target_before_commonblk_area_len = commonblk_len - target_offset_in_commonblk
+        yield from commonblk_data[target_offset_in_commonblk:target_offset_in_commonblk + target_before_commonblk_area_len]
+        target_in_commonblk_len -= target_before_commonblk_area_len
+
+        target_overrided_whole_commonblk_count = target_in_commonblk_len // commonblk_len
+        target_after_commonblk_area_len = target_in_commonblk_len % commonblk_len
+
+        for _ in range(target_overrided_whole_commonblk_count):
+            yield from commonblk_data
+        yield from commonblk_data[:target_after_commonblk_area_len]
+
+    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        yield from self.cls_keystream(self._mask128, nbytes, offset)
 
     @classmethod
     def from_qmcv1_mask44(cls, mask44: BytesLike) -> Mask128:
@@ -74,70 +133,44 @@ class Mask128(KeyStreamBasedStreamCipherSkel):
             mask128[idx128] = ((value << rotate) % 256) | ((value >> rotate) % 256)
 
         instance = cls(mask128)
-        instance._original_master_key = key256
+        instance._original_qmcv2_key256 = key256
 
         return instance
 
-    def __init__(self, mask128: BytesLike, /):
-        self._mask128 = tobytes(mask128)
-        if len(self._mask128) != 128:
-            raise ValueError(f"invalid mask length: should be 128, got {len(self._mask128)}")
-
-    @classmethod
-    def cls_keystream(cls, nbytes: IntegerLike, offset: IntegerLike, /, mask128: BytesLike) -> Generator[int, None, None]:
-        mask128: bytes = tobytes(mask128)
-        if len(mask128) != 128:
-            raise ValueError(f"invalid mask length (should be 128, got {len(mask128)})")
-        firstblk_data = mask128 * 256  # 前 32768 字节
-        secondblk_data = firstblk_data[1:-1]  # 第 32769 至 65535 字节
-        startblk_data = firstblk_data + secondblk_data  # 初始块：前 65535 字节
-        startblk_len = len(startblk_data)
-        commonblk_data = firstblk_data[:-1]  # 普通块：第 65536 字节往后每一个 32767 大小的块
-        commonblk_len = len(commonblk_data)
-        offset = toint(offset)
-        nbytes = toint(nbytes)
-        if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
-        if nbytes < 0:
-            raise ValueError("first argument 'nbytes' must be a non-negative integer")
-
-        if 0 <= offset < startblk_len:
-            max_target_in_startblk_len = startblk_len - offset
-            target_in_commonblk_len = nbytes - max_target_in_startblk_len
-            target_in_startblk_len = min(nbytes, max_target_in_startblk_len)
-            yield from startblk_data[offset:offset + target_in_startblk_len]
-            if target_in_commonblk_len <= 0:
-                return
-            else:
-                offset = 0
-        else:
-            offset -= startblk_len
-            target_in_commonblk_len = nbytes
-
-        target_offset_in_commonblk = offset % commonblk_len
-        if target_offset_in_commonblk == 0:
-            target_before_commonblk_area_len = 0
-        else:
-            target_before_commonblk_area_len = commonblk_len - target_offset_in_commonblk
-        yield from commonblk_data[target_offset_in_commonblk:target_offset_in_commonblk + target_before_commonblk_area_len]
-        target_in_commonblk_len -= target_before_commonblk_area_len
-
-        target_overrided_whole_commonblk_count = target_in_commonblk_len // commonblk_len
-        target_after_commonblk_area_len = target_in_commonblk_len % commonblk_len
-
-        for _ in range(target_overrided_whole_commonblk_count):
-            yield from commonblk_data
-        yield from commonblk_data[:target_after_commonblk_area_len]
-
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
-        yield from self.cls_keystream(nbytes, offset, mask128=self._mask128)
-
 
 class HardenedRC4(KeyStreamBasedStreamCipherSkel):
+    def __init__(self, key: BytesLike, /):
+        self._key = tobytes(key)
+
+        key_len = len(self._key)
+        if key_len == 0:
+            raise ValueError("first argument 'key' cannot be an empty bytestring")
+        if b'\x00' in self._key:
+            raise ValueError("first argument 'key' cannot contain null bytes")
+
+        self._box = bytearray(i % 256 for i in range(key_len))
+        j = 0
+        for i in range(key_len):
+            j = (j + self._box[i] + self._key[i % key_len]) % key_len
+            self._box[i], self._box[j] = self._box[j], self._box[i]
+
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._key
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
+
     @property
+    @lru_cache
     def hash_base(self) -> int:
         base = 1
-        key = self._master_key
+        key = self._key
 
         for i in range(len(key)):
             v: int = key[i]
@@ -157,29 +190,10 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
     def common_segment_size(self) -> int:
         return 5120
 
-    @property
-    def master_key(self) -> bytes:
-        return self._master_key
-
-    def __init__(self, master_key: BytesLike, /):
-        self._master_key = tobytes(master_key)
-
-        key_len = len(self._master_key)
-        if key_len == 0:
-            raise ValueError("first argument 'master_key' cannot be an empty bytestring")
-        if b'\x00' in self._master_key:
-            raise ValueError("b'\\x00' cannot appear in the first argument 'master_key'")
-
-        self._box = bytearray(i % 256 for i in range(key_len))
-        j = 0
-        for i in range(key_len):
-            j = (j + self._box[i] + self._master_key[i % key_len]) % key_len
-            self._box[i], self._box[j] = self._box[j], self._box[i]
-
     @lru_cache(maxsize=65536)
     def _get_segment_skip(self, value: int) -> int:
-        key = self._master_key
-        key_len = len(self._master_key)
+        key = self._key
+        key_len = len(self._key)
 
         seed = key[value % key_len]
         idx = int(self.hash_base / ((value + 1) * seed) * 100)
@@ -190,7 +204,7 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
                                        blksize: int,
                                        offset: int
                                        ) -> Generator[int, None, None]:
-        key = self._master_key
+        key = self._key
         for i in range(offset, offset + blksize):
             yield key[self._get_segment_skip(i)]
 
@@ -198,7 +212,7 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
                                         blksize: int,
                                         offset: int
                                         ) -> Generator[int, None, None]:
-        key_len = len(self._master_key)
+        key_len = len(self._key)
         box = self._box.copy()
         j, k = 0, 0
 
