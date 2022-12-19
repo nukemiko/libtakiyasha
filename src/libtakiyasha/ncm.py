@@ -20,7 +20,7 @@ from .typedefs import BytesLike, FilePath
 from .typeutils import isfilepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
-__all__ = ['CloudMusicIdentifier', 'NCM']
+__all__ = ['CloudMusicIdentifier', 'NCM', 'probe']
 
 MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 
