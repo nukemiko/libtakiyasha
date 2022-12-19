@@ -24,8 +24,13 @@ __all__ = [
 
 
 class CipherSkel(metaclass=ABCMeta):
-    """适用于一般加密算法的框架类。子类必须实现 ``encrypt()`` 和 ``decrypt()`` 方法。"""
+    """适用于一般加密算法的框架类。子类必须实现 ``encrypt()``、``decrypt()``
+    和 ``getkey()`` 方法。
 
+    如果以上方法中的任何一个无法实现，应当在被调用时抛出 ``NotImplementedError``。
+    """
+
+    @abstractmethod
     def getkey(self, keyname: str = 'master') -> bytes | None:
         raise NotImplementedError
 
@@ -49,12 +54,19 @@ class CipherSkel(metaclass=ABCMeta):
 
 
 class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
-    """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 方法。
+    """适用于简单流式加密算法的框架类。子类必须实现 ``keystream()`` 和 ``getkey()`` 方法。
 
-    如果受限于技术原因无法在 ``keystream()`` 中实现逻辑，那么
-    ``keystream()`` 需要引发 ``NotImplementedError``。
+    以下方法的实现是可选的，但如果实现了，就会被 ``encrypt()`` 和 ``decrypt()`` 使用：
+
+    - ``prexor_encrypt()`` - 加密前对明文的预处理，被 ``encrypt()`` 使用
+    - ``postxor_encrypt()`` - 加密后对密文的后处理，被 ``encrypt()`` 使用
+    - ``prexor_decrypt()`` - 解密前对密文的预处理，被 ``decrypt()`` 使用
+    - ``postxor_decrypt()`` - 解密后对明文的后处理，被 ``decrypt()`` 使用
+
+    以上可选方法的实现必须接受一个类字节对象，并返回一个由整数组成的可迭代对象。
     """
 
+    @abstractmethod
     def getkey(self, keyname: str = 'master') -> bytes | None:
         raise NotImplementedError
 
@@ -79,7 +91,21 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        return bytes(pd_byte ^ ks_byte for pd_byte, ks_byte in zip(plaindata, self.keystream(len(plaindata), offset)))
+        prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'prexor_encrypt', None)
+        postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'postxor_encrypt', None)
+        keystream = self.keystream(len(plaindata), offset)
+
+        if prexor:
+            pd_strm = prexor(plaindata)
+        else:
+            pd_strm = plaindata
+        cd_noxor_strm = (pd_byte ^ ks_byte for pd_byte, ks_byte in zip(pd_strm, keystream))
+        if postxor:
+            cd_strm = postxor(cd_noxor_strm)
+        else:
+            cd_strm = cd_noxor_strm
+
+        return bytes(cd_strm)
 
     def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
         """解密密文 ``cipherdata`` 并返回解密结果。
@@ -91,7 +117,21 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        return bytes(cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cipherdata, self.keystream(len(cipherdata), offset)))
+        prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'prexor_decrypt', None)
+        postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'postxor_decrypt', None)
+        keystream = self.keystream(len(cipherdata), offset)
+
+        if prexor:
+            cd_strm = prexor(cipherdata)
+        else:
+            cd_strm = cipherdata
+        pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
+        if postxor:
+            pd_strm = postxor(pd_noxor_strm)
+        else:
+            pd_strm = pd_noxor_strm
+
+        return bytes(pd_strm)
 
 
 class CryptLayerWrappedIOSkel(io.BytesIO):
@@ -710,65 +750,79 @@ class EncryptedBytesIOSkel(io.BytesIO):
                 yield pd_byte ^ ks_byte
 
     def _iterdecrypt(self, cipherdata: bytes, offset: int, /) -> Generator[int, None, None]:
-        decrypt = self._cipher.decrypt
-        iterprexor_cipherdata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_cipherdata', None)
-
         if not cipherdata:
             return
 
-        if not self._keystream_available:
-            yield from iter(decrypt(cipherdata, offset))
-        elif iterprexor_cipherdata:
-            keystream = self._cipher.keystream
-            for prexor_cd_byte, ks_byte in zip(iterprexor_cipherdata(cipherdata), keystream(len(cipherdata), offset)):
-                yield prexor_cd_byte ^ ks_byte
+        if self._keystream_available:
+            prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
+            postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
+            keystream = self._cipher.keystream(len(cipherdata), offset)
+
+            if prexor:
+                cd_strm = prexor(cipherdata)
+            else:
+                cd_strm = cipherdata
+            pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
+            if postxor:
+                pd_strm = postxor(pd_noxor_strm)
+            else:
+                pd_strm = pd_noxor_strm
         else:
-            keystream = self._cipher.keystream
-            for cd_byte, ks_byte in zip(cipherdata, keystream(len(cipherdata), offset)):
-                yield cd_byte ^ ks_byte
+            pd_strm = self._cipher.decrypt(cipherdata, offset)
+
+        yield from pd_strm
 
     def _iterdecrypt_untilnl(self, cipherdata: bytes, offset: int, /) -> Generator[int, None, None]:
-        decrypt = self._cipher.decrypt
-        iterprexor_cipherdata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_cipherdata', None)
-
         if not cipherdata:
             return
 
-        if not self._keystream_available:
-            for pd_byte in iter(decrypt(cipherdata, offset)):
-                yield pd_byte
-                if pd_byte == 10:
-                    return
-        elif iterprexor_cipherdata:
-            keystream = self._cipher.keystream
-            for prexor_cd_byte, ks_byte in zip(iterprexor_cipherdata(cipherdata), keystream(len(cipherdata), offset)):
-                yld = prexor_cd_byte ^ ks_byte
-                yield yld
-                if yld == 10:
-                    return
+        if self._keystream_available:
+            prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
+            postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
+            keystream = self._cipher.keystream(len(cipherdata), offset)
+
+            if prexor:
+                cd_strm = prexor(cipherdata)
+            else:
+                cd_strm = cipherdata
+            pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
+            if postxor:
+                pd_strm = postxor(pd_noxor_strm)
+            else:
+                pd_strm = pd_noxor_strm
         else:
-            keystream = self._cipher.keystream
-            for cd_byte, ks_byte in zip(cipherdata, keystream(len(cipherdata), offset)):
-                yld = cd_byte ^ ks_byte
-                yield yld
-                if yld == 10:
-                    return
+            pd_strm = self._cipher.decrypt(cipherdata, offset)
+
+        for pd_byte in pd_strm:
+            yield pd_byte
+            if pd_byte == 10:
+                return
+
+    def can_encrypt(self) -> bool:
+        return self._encrypt_available
+
+    def can_decrypt(self) -> bool:
+        return self._decrypt_available
 
     def getbuffer(self, nocryptlayer: bool = False) -> memoryview:
         if nocryptlayer:
             return super().getbuffer()
         else:
-            raise NotImplementedError('memoryview with crypt layer is not supported')
+            raise io.UnsupportedOperation('memoryview with crypt layer is not supported')
 
     def getvalue(self, nocryptlayer: bool = False) -> bytes:
         if nocryptlayer:
             return super().getvalue()
+        elif not self.can_decrypt():
+            raise io.UnsupportedOperation('getvalue with crypt layer')
         else:
             return bytes(self._iterdecrypt(super().getvalue(), 0))
 
     def read(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
         if nocryptlayer:
             return super().read(size)
+        elif not self.can_decrypt():
+            raise io.UnsupportedOperation('read with crypt layer')
         else:
             curpos = self.tell()
             if size is None:
@@ -786,11 +840,15 @@ class EncryptedBytesIOSkel(io.BytesIO):
             return result
 
     def read1(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
+        if not (nocryptlayer or self.can_decrypt()):
+            raise io.UnsupportedOperation('read1 with crypt layer')
         return self.read(size, nocryptlayer)
 
     def readline(self, size: IntegerLike | None = -1, /, nocryptlayer: bool = False) -> bytes:
         if nocryptlayer:
             return super().readline(size)
+        elif not self.can_decrypt():
+            raise io.UnsupportedOperation('readline with crypt layer')
         else:
             curpos = self.tell()
             if size is None:
@@ -826,6 +884,8 @@ class EncryptedBytesIOSkel(io.BytesIO):
                   ) -> list[bytes]:
         if nocryptlayer:
             return super().readlines(hint)
+        elif not self.can_decrypt():
+            raise io.UnsupportedOperation('readlines with crypt layer')
         else:
             curpos = self.tell()
             max_read_size = len(super().getvalue()[curpos:])
@@ -852,6 +912,8 @@ class EncryptedBytesIOSkel(io.BytesIO):
     def readinto(self, buffer: WritableBuffer, /, nocryptlayer: bool = False) -> int:
         if nocryptlayer:
             return super().readinto(buffer)
+        elif not self.can_decrypt():
+            raise io.UnsupportedOperation('readinto with crypt layer')
         else:
             if not isinstance(buffer, memoryview):
                 buffer = memoryview(buffer)
@@ -865,11 +927,15 @@ class EncryptedBytesIOSkel(io.BytesIO):
             return data_len
 
     def readinto1(self, buffer: WritableBuffer, /, nocryptlayer: bool = False) -> int:
+        if not (nocryptlayer or self.can_decrypt()):
+            raise io.UnsupportedOperation('readinto1 with crypt layer')
         return self.readinto(buffer, nocryptlayer)
 
     def write(self, data: BytesLike, /, nocryptlayer: bool = False) -> int:
         if nocryptlayer:
             return super().write(data)
+        elif not self.can_encrypt():
+            raise io.UnsupportedOperation('write with crypt layer')
         else:
             curpos = self.tell()
             return super().write(
@@ -879,6 +945,8 @@ class EncryptedBytesIOSkel(io.BytesIO):
             )
 
     def writelines(self, lines: Iterable[BytesLike], /, nocryptlayer: bool = False) -> None:
+        if not (nocryptlayer or self.can_encrypt()):
+            raise io.UnsupportedOperation('write with crypt layer')
         for data in lines:
             self.write(data, nocryptlayer)
 
