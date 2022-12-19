@@ -34,9 +34,17 @@ class StreamedAESWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @property
-    def master_key(self) -> bytes:
-        return self._key
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._key
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
 
     def __init__(self, key: BytesLike, /) -> None:
         self._key = tobytes(key)
@@ -59,10 +67,17 @@ class TEAWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @property
-    def master_key(self) -> bytes:
-        """主要的密钥。"""
-        return self._key
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._key
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
 
     def __init__(self,
                  key: BytesLike,
@@ -91,7 +106,8 @@ class TEAWithModeECB(CipherSkel):
         return v0, v1, k0, k1, k2, k3
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), self.master_key)
+        master_key = self.getkey('master')
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -108,7 +124,8 @@ class TEAWithModeECB(CipherSkel):
         return v0.to_bytes(4, 'big') + v1.to_bytes(4, 'big')
 
     def decrypt(self, cipherdata: BytesLike, /) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), self.master_key)
+        master_key = self.getkey('master')
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -126,6 +143,18 @@ class TEAWithModeECB(CipherSkel):
 
 
 class TarsCppTCTEAWithModeCBC(CipherSkel):
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._lower_level_tea_cipher.getkey('master')
+        elif isinstance(keyname, str):
+            raise ValueError(
+                f"'keyname' must be 'master', not {repr(keyname)}"
+            )
+        else:
+            raise TypeError(
+                f"'keyname' must be str, not {type(keyname).__name__}"
+            )
+
     @CachedClassInstanceProperty
     def blocksize(self) -> int:
         return 8
@@ -141,11 +170,6 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
     @CachedClassInstanceProperty
     def zero_len(self) -> int:
         return 7
-
-    @property
-    def master_key(self) -> bytes:
-        """主要的密钥。"""
-        return self._lower_level_tea_cipher.master_key
 
     @property
     def lower_level_cipher(self) -> TEAWithModeECB:
