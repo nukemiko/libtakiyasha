@@ -85,6 +85,10 @@ class StreamCipherBasedCryptedIOProto(Protocol):
     def cipher(self) -> StreamCipherProto | KeyStreamBasedStreamCipherProto:
         raise NotImplementedError
 
+    @property
+    def master_key(self) -> bytes | None:
+        raise NotImplementedError
+
     def read(self, size: IntegerLike = -1, /) -> bytes:
         raise NotImplementedError
 
