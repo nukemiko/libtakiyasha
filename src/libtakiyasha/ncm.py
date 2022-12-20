@@ -306,21 +306,26 @@ class NCM(EncryptedBytesIOSkel):
 
     @classmethod
     def from_file(cls,
-                  file_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
-                  core_key: BytesLike,
-                  tag_key: BytesLike = None
+                  filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
+                  core_key: BytesLike = None,
+                  tag_key: BytesLike = None,
+                  master_key: BytesLike = None
                   ):
         """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``NCM.open()`` 代替。"""
         warnings.warn(
-            DeprecationWarning('NCM.from_file() is deprecated and no longer used. Use NCM.open() instead.')
+            DeprecationWarning(
+                f'{cls.__name__}.from_file() is deprecated and no longer used. '
+                f'Use {cls.__name__}.open() instead.'
+            )
         )
-        return cls.open(file_or_info, core_key=core_key, tag_key=tag_key)
+        return cls.open(filething_or_info, core_key=core_key, tag_key=tag_key, master_key=master_key)
 
     @classmethod
     def open(cls,
              filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
-             core_key: BytesLike,
-             tag_key: BytesLike = None
+             core_key: BytesLike = None,
+             tag_key: BytesLike = None,
+             master_key: BytesLike = None
              ):
         """打开一个 NCM 文件，并返回一个 ``NCM`` 对象。
 
@@ -331,25 +336,43 @@ class NCM(EncryptedBytesIOSkel):
         ``filething_or_info`` 也可以接受 ``probe()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
-        第二个参数 ``core_key`` 是必需的，用于解密文件内嵌的主密钥。
+        第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
+        例外：如果你提供了第四个参数 ``master_key``，那么它是可选的。
 
         第三个参数 ``tag_key`` 可选，用于解密文件内嵌的歌曲信息。如果留空，则使用默认值：
         ``b'\x23\x31\x34\x6c\x6a\x6b\x5f\x21\x5c\x5d\x26\x30\x55\x3c\x27\x28'``
+
+        第四个参数 ``master_key`` 可选，如果提供，将会被作为主密钥使用，
+        而文件内置的主密钥会被忽略，``core_key`` 也不再是必需参数。
+        一般不需要填写此参数，因为 NCM 文件总是内嵌加密的主密钥，从而可以轻松地获得。
 
         Args:
             filething_or_info: 源文件的路径或文件对象，或者 probe() 的返回值
             core_key: 核心密钥，用于解密文件内嵌的主密钥
             tag_key: 歌曲信息密钥，用于解密文件内嵌的歌曲信息
+            master_key: 如果提供，将会被作为主密钥使用，而文件内置的主密钥会被忽略
+        Raises:
+            TypeError: 参数 core_key 和 master_key 都未提供
         """
-        core_key = tobytes(core_key)
+        if core_key is not None:
+            core_key = tobytes(core_key)
         if tag_key is not None:
             tag_key = tobytes(tag_key)
+        if master_key is not None:
+            master_key = tobytes(master_key)
+        if master_key is None and core_key is None:
+            raise TypeError(
+                f"{cls.__name__}.open() missing 1 argument: 'core_key'"
+            )
 
         def operation(fd: IO[bytes]) -> cls:
-            master_key = StreamedAESWithModeECB(core_key).decrypt(
-                fileinfo.master_key_encrypted
-            )[17:]  # 去除开头的 b'neteasecloudmusic'
-            cipher = fileinfo.cipher_ctor(master_key)
+            if master_key is None:
+                target_master_key = StreamedAESWithModeECB(core_key).decrypt(
+                    fileinfo.master_key_encrypted
+                )[17:]  # 去除开头的 b'neteasecloudmusic'
+            else:
+                target_master_key = master_key
+            cipher = fileinfo.cipher_ctor(target_master_key)
 
             try:
                 ncm_tag = CloudMusicIdentifier.from_ncm_163key(
@@ -418,7 +441,8 @@ class NCM(EncryptedBytesIOSkel):
                 ) -> None:
         """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``NCM.save()`` 代替。"""
         warnings.warn(
-            DeprecationWarning('NCM.to_file() is deprecated and no longer used. Use NCM.save() instead.')
+            f'{type(self).__name__}.from_file() is deprecated and no longer used. '
+            f'Use {type(self).__name__}.save() instead.'
         )
         return self.save(core_key, filething=filething, tag_key=tag_key)
 
