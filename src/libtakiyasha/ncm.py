@@ -20,6 +20,8 @@ from .typedefs import BytesLike, FilePath
 from .typeutils import isfilepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
+warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
+
 __all__ = ['CloudMusicIdentifier', 'NCM', 'probe']
 
 MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
@@ -441,8 +443,10 @@ class NCM(EncryptedBytesIOSkel):
                 ) -> None:
         """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``NCM.save()`` 代替。"""
         warnings.warn(
-            f'{type(self).__name__}.from_file() is deprecated and no longer used. '
-            f'Use {type(self).__name__}.save() instead.'
+            DeprecationWarning(
+                f'{type(self).__name__}.from_file() is deprecated and no longer used. '
+                f'Use {type(self).__name__}.save() instead.'
+            )
         )
         return self.save(core_key, filething=filething, tag_key=tag_key)
 
@@ -455,7 +459,7 @@ class NCM(EncryptedBytesIOSkel):
 
         第一个参数 ``core_key`` 是必需的，用于加密主密钥，以便嵌入到文件。
 
-        第二个参数 ``filething`` 需要是一个文件路径或文件对象。
+        第二个参数 ``filething`` 是可选的，如果提供此参数，需要是一个文件路径或文件对象。
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
@@ -499,6 +503,14 @@ class NCM(EncryptedBytesIOSkel):
             fd.write(cover_data)
 
             fd.write(self.getvalue(nocryptlayer=True))
+
+        if filething is None:
+            if self.source is None:
+                raise TypeError(
+                    "attribute 'self.source' and argument 'filething' are empty, "
+                    "don't know which file to save to"
+                )
+            filething = self.source
 
         if isfilepath(filething):
             with open(filething, mode='wb') as fileobj:
