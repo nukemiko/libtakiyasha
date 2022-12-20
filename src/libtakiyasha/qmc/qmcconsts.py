@@ -5,7 +5,11 @@ import pickle
 from pathlib import Path
 from typing import Final
 
+from ..miscutils import BINARIES_ROOTDIR
+
 __all__ = ['KEY256_MAPPING']
+
+MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / 'qmc' / Path(__file__).stem
 
 # KEY256_MAPPING = [[]] * 256
 #
@@ -17,5 +21,5 @@ __all__ = ['KEY256_MAPPING']
 #         KEY256_MAPPING[real_idx].append(i)
 #
 # KEY256_MAPPING 可使用以上代码生成
-with open(Path(__file__).parent / 'binaries/Key256MappingData', 'rb') as f:
+with open(MODULE_BINARIES_ROOTDIR / 'Key256MappingData', 'rb') as f:
     KEY256_MAPPING: Final[list[list[int]]] = pickle.load(f)
