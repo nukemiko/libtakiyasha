@@ -21,14 +21,6 @@ class Mask128(KeyStreamBasedStreamCipherSkel):
             return self._mask128
         elif keyname == 'original':
             return getattr(self, '_original_qmcv2_key256', None)
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master' or 'original', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     @classmethod
     def cls_keystream(cls,
@@ -157,14 +149,6 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._key
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     @property
     @lru_cache

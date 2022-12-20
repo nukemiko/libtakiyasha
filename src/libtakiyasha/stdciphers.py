@@ -37,14 +37,6 @@ class StreamedAESWithModeECB(CipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._key
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     def __init__(self, key: BytesLike, /) -> None:
         self._key = tobytes(key)
@@ -70,14 +62,6 @@ class TEAWithModeECB(CipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._key
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     def __init__(self,
                  key: BytesLike,
@@ -146,14 +130,6 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._lower_level_tea_cipher.getkey('master')
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     @CachedClassInstanceProperty
     def blocksize(self) -> int:
@@ -413,14 +389,6 @@ class ARC4(KeyStreamBasedStreamCipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes:
         if keyname == 'master':
             return self._key
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
         offset = toint(offset)

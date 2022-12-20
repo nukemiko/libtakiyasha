@@ -25,14 +25,6 @@ class QMCv2KeyEncryptV1(CipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._core_key
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     def __init__(self, key: BytesLike, /):
         self._core_key = tobytes(key)
@@ -91,14 +83,6 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
             return self._garble_key1
         elif keyname == 'garble2':
             return self._garble_key2
-        elif isinstance(keyname, str):
-            raise ValueError(
-                f"'keyname' must be 'master', 'mix1', or 'mix2', not {repr(keyname)}"
-            )
-        else:
-            raise TypeError(
-                f"'keyname' must be str, not {type(keyname).__name__}"
-            )
 
     def __init__(self, key: BytesLike, garble_key1: BytesLike, garble_key2: BytesLike, /):
         self._garble_key1 = tobytes(garble_key1)
