@@ -11,20 +11,20 @@ from ..typedefs import BytesLike
 from ..typeutils import tobytes
 
 __all__ = [
-    'make_simple_key',
+    'make_core_key',
     'QMCv2KeyEncryptV1',
     'QMCv2KeyEncryptV2'
 ]
 
 
-def make_simple_key(salt: int, length: int) -> bytes:
+def make_core_key(salt: int, length: int) -> bytes:
     return bytes(int(abs(tan(salt + _ * 0.1) * 100)) for _ in range(length))
 
 
 class QMCv2KeyEncryptV1(CipherSkel):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
-            return self._simple_key
+            return self._core_key
         elif isinstance(keyname, str):
             raise ValueError(
                 f"'keyname' must be 'master', not {repr(keyname)}"
@@ -34,22 +34,18 @@ class QMCv2KeyEncryptV1(CipherSkel):
                 f"'keyname' must be str, not {type(keyname).__name__}"
             )
 
-    @property
-    def simple_key(self) -> bytes:
-        return self._simple_key
-
-    def __init__(self, simple_key: BytesLike, /):
-        self._simple_key = tobytes(simple_key)
+    def __init__(self, key: BytesLike, /):
+        self._core_key = tobytes(key)
 
         self._half_of_keysize = TarsCppTCTEAWithModeCBC.master_key_size // 2
-        if len(self._simple_key) != self._half_of_keysize:
-            raise ValueError(f"invalid length of simple key: "
-                             f"should be {self._half_of_keysize}, not {len(self._simple_key)}"
+        if len(self._core_key) != self._half_of_keysize:
+            raise ValueError(f"invalid length of core key: "
+                             f"should be {self._half_of_keysize}, not {len(self._core_key)}"
                              )
 
         self._key_buf = bytearray(TarsCppTCTEAWithModeCBC.master_key_size)
         for idx in range(TarsCppTCTEAWithModeCBC.blocksize):
-            self._key_buf[idx << 1] = self._simple_key[idx]
+            self._key_buf[idx << 1] = self._core_key[idx]
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
@@ -90,7 +86,7 @@ class QMCv2KeyEncryptV1(CipherSkel):
 class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
-            return self._simple_key
+            return self._core_key
         elif keyname == 'garble1':
             return self._garble_key1
         elif keyname == 'garble2':
@@ -104,7 +100,7 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
                 f"'keyname' must be str, not {type(keyname).__name__}"
             )
 
-    def __init__(self, simple_key: BytesLike, garble_key1: BytesLike, garble_key2: BytesLike, /):
+    def __init__(self, key: BytesLike, garble_key1: BytesLike, garble_key2: BytesLike, /):
         self._garble_key1 = tobytes(garble_key1)
         self._garble_key2 = tobytes(garble_key2)
 
@@ -115,7 +111,7 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
                                                                                  rounds=32
                                                                                  )
 
-        super().__init__(simple_key)
+        super().__init__(key)
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
