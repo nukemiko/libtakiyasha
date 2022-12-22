@@ -143,7 +143,7 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
         self._box = bytearray(i % 256 for i in range(key_len))
         j = 0
         for i in range(key_len):
-            j = (j + self._box[i] + self._key[i % key_len]) % key_len
+            j = (j + self._box[i] + self._key[i]) % key_len
             self._box[i], self._box[j] = self._box[j], self._box[i]
 
     def getkey(self, keyname: str = 'master') -> bytes | None:
