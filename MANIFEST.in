@@ -1,1 +1,2 @@
-include src/libtakiyasha/qmc/binaries/*
+recursive-include src/libtakiyasha/binaries/*
+include MANIFEST.in src/libtakiyasha/VERSION
