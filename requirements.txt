@@ -1,3 +1,2 @@
 pyaes
-setuptools
 mutagen
