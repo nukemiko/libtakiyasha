@@ -53,7 +53,12 @@ class CloudMusicIdentifier:
     alias: list[str] = dcfield(default_factory=list)
     transNames: list[str] = dcfield(default_factory=list)
 
-    def to_mutagen_tag(self, tag_type: Literal['FLAC', 'ID3'] = None) -> flac.FLAC | id3.ID3:
+    def to_mutagen_tag(self,
+                       tag_type: Literal['FLAC', 'ID3'] = None,
+                       with_ncm_163key: bool = True,
+                       tag_key: BytesLike | None = None,
+                       return_cached_first: bytes = True
+                       ) -> flac.FLAC | id3.ID3:
         """将 CloudMusicIdentifier 对象导出为 Mutagen 库使用的标签格式实例：
         ``mutagen.flac.FLAC`` 和 ``mutagen.id3.ID3``。
 
@@ -62,6 +67,9 @@ class CloudMusicIdentifier:
 
         Args:
             tag_type: 需要导出为何种格式的标签实例，仅支持 'FLAC' 和 'ID3'
+            with_ncm_163key: 是否在导出的标签中嵌入 163key
+            tag_key: （仅当 with_163key=True）歌曲信息密钥，用于加密 163key，以便将其写入注释
+            return_cached_first: （仅当 with_163key=True）在满足特定条件时，将缓存的 163key 写入注释，而不是重新生成一个
 
         Examples:
             >>> from mutagen import flac, mp3
@@ -131,6 +139,15 @@ class CloudMusicIdentifier:
             if attr:
                 tag[tagkey] = constructor(attr)
 
+        if with_ncm_163key:
+            ncm_163key = self.to_ncm_163key(tag_key=tag_key,
+                                            return_cached_first=return_cached_first
+                                            )
+            if isinstance(tag, flac.FLAC):
+                tag['description'] = [ncm_163key.decode('ascii')]
+            elif isinstance(tag, id3.ID3):
+                tag['TXXX::comment'] = id3.TXXX(encoding=3, desc='comment', text=[ncm_163key.decode('ascii')])
+
         return tag
 
     @classmethod
@@ -166,7 +183,10 @@ class CloudMusicIdentifier:
         instance._orig_tag_key = tag_key
         return instance
 
-    def to_ncm_163key(self, tag_key: BytesLike = None, return_cached: bytes = True) -> bytes:
+    def to_ncm_163key(self,
+                      tag_key: BytesLike = None,
+                      return_cached_first: bytes = True
+                      ) -> bytes:
         """将 CloudMusicIdentifier 对象导出为 163key。
 
         第一个参数 ``tag_key`` 用于解密 163key。如果留空，则使用默认值：
@@ -181,15 +201,15 @@ class CloudMusicIdentifier:
 
         如果以上条件中的任意一条未被满足，转而返回一个根据当前对象重新生成的 163key。
         Args:
-            tag_key: 歌曲信息密钥，用于解密 163key
-            return_cached: 在满足特定条件时，返回缓存的 163key，而不是重新生成一个
+            tag_key: 歌曲信息密钥，用于加密 163key
+            return_cached_first: 在满足特定条件时，返回缓存的 163key，而不是重新生成一个
         """
         if tag_key is None:
             tag_key = b'\x23\x31\x34\x6c\x6a\x6b\x5f\x21\x5c\x5d\x26\x30\x55\x3c\x27\x28'
         else:
             tag_key = tobytes(tag_key)
 
-        if return_cached and self._orig_ncm_tag:
+        if return_cached_first and self._orig_ncm_tag:
             target_ncm_tag = {_ck: _cv for _ck, _cv in asdict(self).items() if _cv or _ck in self._orig_ncm_tag}
         else:
             target_ncm_tag = asdict(self)
@@ -201,7 +221,7 @@ class CloudMusicIdentifier:
 
             return ncm_163key
 
-        if return_cached and tag_key == self._orig_tag_key and self._orig_ncm_tag and self._orig_ncm_163key:
+        if return_cached_first and tag_key == self._orig_tag_key and self._orig_ncm_tag and self._orig_ncm_163key:
             if len(target_ncm_tag) == len(self._orig_ncm_tag):
                 for k, v in self._orig_ncm_tag.items():
                     if target_ncm_tag[k] != v:
