@@ -211,6 +211,77 @@ class CloudMusicIdentifier:
 
         return operation()
 
+    def to_mutagen_style_dict(self):
+        """（已弃用，且将会在后续版本中删除。请尽快使用
+        ``CloudMusicIdentifier.to_mutagen_tag()`` 代替，以便极大简化步骤。）
+
+        根据当前对象储存的解析结果，构建并返回一个 Mutagen VorbisComment/ID3 风格的字典。
+
+        此方法需要当前对象的 ``format`` 属性来决定构建何种风格的字典，
+        并且只支持 ``'flac'`` (VorbisComment) 和 ``'mp3'`` (ID3)。
+
+        本方法不支持嵌入封面图像，你需要通过其他手段做到。
+
+        配合 Mutagen 使用（以 FLAC 为例）：
+
+        >>> from mutagen import flac  # type: ignore
+        >>> ncm_tag = CloudMusicIdentifier(format='flac')
+        >>> mutagen_flac = mutagen.flac.FLAC('target.flac')  # type: ignore
+        >>> mutagen_flac.clear()  # 可选，此步骤将会清空 mutagen_flac 已有的数据
+        >>> mutagen_flac.update(ncm_tag.to_mutagen_style_dict())
+        >>> mutagen_flac.save()
+        >>>
+
+        配合 Mutagen 使用（以 MP3 为例，稍微麻烦一些）：
+
+        >>> from mutagen import id3, mp3  # type: ignore
+        >>> ncm_tag = CloudMusicIdentifier(format='mp3')
+        >>> mutagen_mp3 = mutagen.mp3.MP3('target.mp3')  # type: ignore
+        >>> mutagen_mp3.clear()  # 可选，此步骤将会清空 mutagen_mp3 已有的数据
+        >>> for key, value in ncm_tag.to_mutagen_style_dict().items():
+        ...     id3frame_cls = getattr(id3, key[:4])
+        ...     id3frame = mutagen_mp3.get(key)
+        ...     if id3frame is None:
+        ...         mutagen_mp3[key] = id3frame_cls(text=value, desc='comment')
+        ...     elif id3frame.text:
+        ...         id3frame.text = value
+        ...         mutagen_mp3[key] = id3frame
+        ...
+        >>> mutagen_mp3.save()
+        >>>
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.to_mutagen_style_dict() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'Use {type(self).__name__}.to_mutagen_tag() instead.'
+            )
+        )
+
+        comment = self.to_ncm_163key().decode('utf-8')
+        if not isinstance(self.format, str):
+            raise TypeError(f"'self.format' must be str, not {type(self.format)}")
+        elif self.format.lower() == 'flac':
+            ret = {
+                'title' : [self.musicName],
+                'artist': [artistinfo[0] for artistinfo in self.artist],
+                'album' : [self.album],
+            }
+            if comment is not None:
+                ret['comment'] = [comment]
+        elif self.format.lower() == 'mp3':
+            ret = {
+                'TIT2': [self.musicName],
+                'TPE1': [artistinfo[0] for artistinfo in self.artist],
+                'TALB': [self.album]
+            }
+            if comment is not None:
+                ret['TXXX::comment'] = [comment]
+        else:
+            raise ValueError(f"unsupported tag format '{self.format}'")
+
+        return ret
+
 
 class NCMFileInfo(NamedTuple):
     """用于储存 NCM 文件的信息。"""
@@ -308,19 +379,29 @@ class NCM(EncryptedBytesIOSkel):
 
     @classmethod
     def from_file(cls,
-                  filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
-                  core_key: BytesLike = None,
-                  tag_key: BytesLike = None,
-                  master_key: BytesLike = None
+                  ncm_filething: FilePath | IO[bytes], /,
+                  core_key: BytesLike,
                   ):
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``NCM.open()`` 代替。"""
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.open()`` 代替。）
+
+        打开一个已有的 NCM 文件 ``ncm_filething``。
+
+        第一个位置参数 ``ncm_filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        属性的路径对象。``ncm_filething`` 也可以是文件对象，该对象必须可读和可跳转
+        （``ncm_filething.seekable() == True``）。
+
+        本方法需要在文件中寻找并解密主密钥，随后使用主密钥解密音频数据。
+
+        核心密钥 ``core_key`` 是第二个参数，用于解密找到的主密钥。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{cls.__name__}.from_file() is deprecated and no longer used. '
+                f'{cls.__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {cls.__name__}.open() instead.'
             )
         )
-        return cls.open(filething_or_info, core_key=core_key, tag_key=tag_key, master_key=master_key)
+        return cls.open(ncm_filething, core_key=core_key)
 
     @classmethod
     def open(cls,
@@ -437,18 +518,36 @@ class NCM(EncryptedBytesIOSkel):
         return instance
 
     def to_file(self,
-                core_key: BytesLike,
-                filething: FilePath | IO[bytes] = None,
-                tag_key: BytesLike | None = None
+                ncm_filething: FilePath | IO[bytes] = None, /,
+                core_key: BytesLike = None
                 ) -> None:
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``NCM.save()`` 代替。"""
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.save()`` 代替。）
+
+        将当前 NCM 对象保存到文件 ``filething``。
+        此过程会向 ``ncm_filething`` 写入 NCM 文件结构。
+
+        第一个位置参数 ``ncm_filething`` 可以是 ``str``、``bytes`` 或任何拥有 ``__fspath__``
+        属性的路径对象。``ncm_filething`` 也可以是文件对象，该对象必须可写。
+
+        第二个位置参数 ``core_key`` 是可选的。
+        如果提供此参数，本方法会将其作为核心密钥来加密主密钥；否则，使用
+        ``self.core_key`` 代替。如果两者都为 ``None`` 或未提供，触发 ``ValueError``。
+
+        如果提供了 ``ncm_filething``，本方法将会把数据写入 ``ncm_filething``
+        指向的文件。否则，本方法以写入模式打开一个指向 ``self.name``
+        的文件对象，将数据写入此文件对象。如果两者都为空或未提供，则会触发
+        ``ValueError``。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{type(self).__name__}.from_file() is deprecated and no longer used. '
+                f'{type(self).__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {type(self).__name__}.save() instead.'
             )
         )
-        return self.save(core_key, filething=filething, tag_key=tag_key)
+        if not core_key:
+            core_key = self.core_key
+        return self.save(core_key, filething=ncm_filething)
 
     def save(self,
              core_key: BytesLike,
@@ -557,6 +656,58 @@ class NCM(EncryptedBytesIOSkel):
         self._cover_data: bytes | None = None
         self._ncm_tag: CloudMusicIdentifier = CloudMusicIdentifier()
         self._sourcefile: Path | None = None
+        self._core_key_deprecated: bytes | None = None
+
+    @property
+    def core_key(self) -> bytes | None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``NCM.from_file()`` 会在当前对象被创建时设置此属性；而 ``NCM.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.core_key is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        return self._core_key_deprecated
+
+    @core_key.setter
+    def core_key(self, value: BytesLike) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``NCM.from_file()`` 会在当前对象被创建时设置此属性；而 ``NCM.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.core_key is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        self._core_key_deprecated = tobytes(value)
+
+    @core_key.deleter
+    def core_key(self) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``NCM.from_file()`` 会在当前对象被创建时设置此属性；而 ``NCM.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.core_key is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        self._core_key_deprecated = None
 
     @property
     def cover_data(self) -> bytes | None:
