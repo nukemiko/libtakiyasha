@@ -748,3 +748,11 @@ class NCM(EncryptedBytesIOSkel):
     def ncm_tag(self) -> CloudMusicIdentifier:
         """163key 的解析结果。"""
         return self._ncm_tag
+
+    @ncm_tag.setter
+    def ncm_tag(self, value: CloudMusicIdentifier) -> None:
+        """163key 的解析结果。"""
+        if not isinstance(value, CloudMusicIdentifier):
+            raise TypeError(
+                f"attribute 'ncm_tag' must be CloudMusicIdentifier, not {type(value).__name__}"
+            )
