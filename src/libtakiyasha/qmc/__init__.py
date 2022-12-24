@@ -222,17 +222,28 @@ class QMCv1(EncryptedBytesIOSkel):
 
     @classmethod
     def from_file(cls,
-                  filething: FilePath | IO[bytes], /,
-                  mask: BytesLike
+                  qmcv1_filething: FilePath | IO[bytes], /,
+                  master_key: BytesLike
                   ):
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``QMCv1.open()`` 代替。"""
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv1.open()`` 代替。）
+
+        打开一个 QMCv1 文件或文件对象 ``qmcv1_filething``。
+
+        第一个位置参数 ``qmcv1_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv1_filething``
+        也可以是一个文件对象，但必须可读。
+
+        第二个位置参数 ``master_key`` 用于解密音频数据，长度仅限 44、128 或 256 位。
+        如果不符合长度要求，会触发 ``ValueError``。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{cls.__name__}.from_file() is deprecated and no longer used. '
+                f'{cls.__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {cls.__name__}.open() instead.'
             )
         )
-        return cls.open(filething, mask=mask)
+        return cls.open(qmcv1_filething, mask=master_key)
 
     @classmethod
     def open(cls,
@@ -287,15 +298,27 @@ class QMCv1(EncryptedBytesIOSkel):
 
         return instance
 
-    def to_file(self, filething: FilePath | IO[bytes] = None, /) -> None:
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``QMCv1.save()`` 代替。"""
+    def to_file(self, qmcv1_filething: FilePath | IO[bytes] = None, /) -> None:
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv1.save()`` 代替。）
+
+        将当前 QMCv1 对象的内容保存到文件 ``qmcv1_filething``。
+
+        第一个位置参数 ``qmcv1_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv1_filething``
+        也可以是一个文件对象，但必须可写。
+
+        本方法会首先尝试写入 ``qmcv1_filething`` 指向的文件。
+        如果未提供 ``qmcv1_filething``，则会尝试写入 ``self.name``
+        指向的文件。如果两者都为空或未提供，则会触发 ``CrypterSavingError``。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{type(self).__name__}.from_file() is deprecated and no longer used. '
+                f'{type(self).__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {type(self).__name__}.save() instead.'
             )
         )
-        return self.save(filething)
+        return self.save(qmcv1_filething)
 
     def save(self, filething: FilePath | IO[bytes] = None, /) -> None:
         """将当前对象保存为一个新 QMCv1 文件。
