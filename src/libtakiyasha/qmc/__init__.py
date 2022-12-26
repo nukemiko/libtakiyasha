@@ -12,7 +12,7 @@ from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_random_ascii_string, make_salt
 from ..prototypes import EncryptedBytesIOSkel
-from ..typedefs import BytesLike, FilePath
+from ..typedefs import BytesLike, FilePath, IntegerLike
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 from ..warns import CrypterSavingWarning
 
@@ -299,7 +299,7 @@ class QMCv1(EncryptedBytesIOSkel):
         return instance
 
     def to_file(self, qmcv1_filething: FilePath | IO[bytes] = None, /) -> None:
-        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv1.save()`` 代替。）
+        """v
 
         将当前 QMCv1 对象的内容保存到文件 ``qmcv1_filething``。
 
@@ -403,17 +403,34 @@ class QMCv2(EncryptedBytesIOSkel):
 
         self._extra_info: QMCv2QTag | QMCv2STag | None = None
 
+        self._core_key_deprecated: bytes | None = None
+        self._garble_key1_deprecated: bytes | None = None
+        self._garble_key2_deprecated: bytes | None = None
+
     @property
     def extra_info(self) -> QMCv2QTag | QMCv2STag | None:
+        """源文件末尾的附加信息（如果有），根据类型可分为 QTag 或 STag。"""
         return self._extra_info
 
     @extra_info.setter
-    def extra_info(self, value: QMCv2QTag | QMCv2STag | None) -> None:
-        if value is None or isinstance(value, (QMCv2QTag, QMCv2STag)):
+    def extra_info(self, value: QMCv2QTag | QMCv2STag) -> None:
+        """源文件末尾的附加信息（如果有），根据类型可分为 QTag 或 STag。"""
+        if isinstance(value, (QMCv2QTag, QMCv2STag)):
             self._extra_info = value
-        raise TypeError(
-            f"attribute 'extra_info' must be QMCv2QTag, QMCv2STag, or None, not {repr(value)}"
-        )
+        elif value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'extra_info'. "
+                f"Use `del self.extra_info` instead"
+            )
+        else:
+            raise TypeError(
+                f"attribute 'extra_info' must be QMCv2QTag or QMCv2STag, not {repr(value)}"
+            )
+
+    @extra_info.deleter
+    def extra_info(self) -> None:
+        """源文件末尾的附加信息（如果有），根据类型可分为 QTag 或 STag。"""
+        self._extra_info = None
 
     @property
     def master_key(self) -> bytes | None:
@@ -424,27 +441,234 @@ class QMCv2(EncryptedBytesIOSkel):
 
         return super().master_key
 
-    @classmethod
-    def from_file(cls,
-                  filething_or_info: tuple[Path | IO[bytes], QMCv2FileInfo | None] | FilePath | IO[bytes], /,
-                  core_key: BytesLike = None,
-                  garble_key1: BytesLike = None,
-                  garble_key2: BytesLike = None,
-                  master_key: BytesLike = None
-                  ):
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``QMCv2.open()`` 代替。"""
+    @property
+    def core_key(self) -> bytes | None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{cls.__name__}.from_file() is deprecated and no longer used. '
+                f'{type(self).__name__}.core_key or {type(self).__name__}.simple_key'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        return self._core_key_deprecated
+
+    @core_key.setter
+    def core_key(self, value: BytesLike) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.core_key or {type(self).__name__}.simple_key'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        if value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'core_key'. "
+                f"Use `del self.core_key` instead"
+            )
+        self._core_key_deprecated = tobytes(value)
+
+    @core_key.deleter
+    def core_key(self) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        核心密钥，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.core_key or {type(self).__name__}.simple_key'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage the core key by your self.'
+            )
+        )
+        self._core_key_deprecated = None
+
+    simple_key = core_key
+
+    @property
+    def garble_key1(self) -> bytes | None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 1，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key1 or {type(self).__name__}.mix_key1'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        return self._garble_key1_deprecated
+
+    @garble_key1.setter
+    def garble_key1(self, value: BytesLike) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 1，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key1 or {type(self).__name__}.mix_key1'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        if value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'garble_key1'. "
+                f"Use `del self.core_key` instead"
+            )
+        self._garble_key1_deprecated = tobytes(value)
+
+    @garble_key1.deleter
+    def garble_key1(self):
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 1，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key1 or {type(self).__name__}.mix_key1'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        self._garble_key1_deprecated = None
+
+    mix_key1 = garble_key1
+
+    @property
+    def garble_key2(self) -> bytes | None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 2，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key2 or {type(self).__name__}.mix_key2'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        return self._garble_key2_deprecated
+
+    @garble_key2.setter
+    def garble_key2(self, value: BytesLike) -> None:
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 2，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key2 or {type(self).__name__}.mix_key2'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        if value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'garble_key2'. "
+                f"Use `del self.core_key` instead"
+            )
+        self._garble_key2_deprecated = tobytes(value)
+
+    @garble_key2.deleter
+    def garble_key2(self):
+        """（已弃用，且将会在后续版本中删除。）
+
+        混淆密钥 2，用于加/解密主密钥。
+
+        ``QMCv2.from_file()`` 会在当前对象被创建时设置此属性；而 ``QMCv2.open()`` 则不会。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.garble_key2 or {type(self).__name__}.mix_key2'
+                f'is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'You need to manage garble keys by your self.'
+            )
+        )
+        self._garble_key2_deprecated = None
+
+    mix_key2 = garble_key2
+
+    @classmethod
+    def from_file(cls,
+                  qmcv2_filething: FilePath | IO[bytes], /,
+                  simple_key: BytesLike = None,
+                  mix_key1: BytesLike = None,
+                  mix_key2: BytesLike = None, *,
+                  master_key: BytesLike = None,
+                  ):
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv2.open()`` 代替。）
+
+        打开一个 QMCv2 文件或文件对象 ``qmcv2_filething``。
+
+        第一个位置参数 ``qmcv2_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv2_filething``
+        也可以是一个文件对象，但必须可读、可跳转（``qmcv2_filething.seekable() == True``）。
+
+        本方法会寻找文件内嵌主密钥的位置和加密方式，进而判断所用加密算法的类型。
+
+        如果提供了参数 ``master_key``，那么此参数将会被视为主密钥，
+        用于判断加密算法类型和解密音频数据，同时会跳过其他步骤。
+        其必须是类字节对象，且转换为 ``bytes`` 的长度必须是 128、256
+        或 512 位。如果不符合长度要求，会触发 ``ValueError``。否则：
+
+        - 如果未能找到文件内嵌的主密钥，那么参数 ``master_key`` 是必需的。
+        - 如果文件内嵌的主密钥，其加密版本为 V1，那么参数 ``simple_key`` 是必需的。
+        - 如果文件内嵌的主密钥，其加密版本为 V2，那么除了 ``simple_key``，参数``mix_key1``、``mix_key2`` 也是必需的。
+
+        以上特定条件中的必需参数，如果缺失，则会触发 ``ValueError``。
+        """
+        warnings.warn(
+            DeprecationWarning(
+                f'{cls.__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {cls.__name__}.open() instead.'
             )
         )
-        return cls.open(filething_or_info,
-                        core_key=core_key,
-                        garble_key1=garble_key1,
-                        garble_key2=garble_key2,
-                        master_key=master_key
-                        )
+        instance = cls.open(qmcv2_filething,
+                            core_key=simple_key,
+                            garble_key1=mix_key1,
+                            garble_key2=mix_key2,
+                            master_key=master_key
+                            )
+        instance._core_key_deprecated = tobytes(simple_key)
+        instance._garble_key1_deprecated = tobytes(mix_key1)
+        instance._garble_key2_deprecated = tobytes(mix_key2)
 
     @classmethod
     def open(cls,
@@ -617,23 +841,82 @@ class QMCv2(EncryptedBytesIOSkel):
         return instance
 
     def to_file(self,
-                core_key: BytesLike = None,
-                filething: FilePath | IO[bytes] = None,
-                garble_key1: BytesLike = None,
-                garble_key2: BytesLike = None,
-                with_extra_info: bool = False
+                qmcv2_filething: FilePath | IO[bytes] = None, /,
+                tag_type: Literal['qtag', 'stag'] = None,
+                simple_key: BytesLike = None,
+                master_key_enc_ver: IntegerLike = 1,
+                mix_key1: BytesLike = None,
+                mix_key2: BytesLike = None
                 ) -> None:
-        """本方法已被废弃，并且可能会在未来版本中被移除。请尽快使用 ``QMCv2.save()`` 代替。"""
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv2.save()`` 代替。）
+
+        将当前 QMCv2 对象的内容保存到文件 ``qmcv2_filething``。
+
+        第一个位置参数 ``qmcv2_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``qmcv2_filething``
+        也可以是一个文件对象，但必须可写。
+
+        本方法会首先尝试写入 ``qmcv2_filething`` 指向的文件。
+        如果未提供 ``qmcv2_filething``，则会尝试写入 ``self.name``
+        指向的文件。如果两者都为空或未提供，则会触发 ``CrypterSavingError``。
+
+        参数 ``tag_type`` 决定在文件末尾附加的内容，仅支持以下值：
+            - ``None`` - 将主密钥加密后直接附加在文件末尾。
+            - ``qtag`` - 将主密钥加密后封装在 QTag 信息中，附加在文件末尾。
+            - ``stag`` - 将 STag 信息附加在文件末尾。
+                - 注意：选择 STag 意味着文件内不会内嵌主密钥，你需要自己记下主密钥。
+                - 访问属性 ``self.master_key`` 获取主密钥。
+
+        如果 ``tag_type`` 为其他值，会触发 ``ValueError``。
+
+        无论 ``tag_type`` 为何值（``stag`` 除外），都需要使用 ``simple_key`` 加密主密钥。
+        如果参数 ``master_key_enc_ver=2``，还需要 ``mix_key1`` 和 ``mix_key2``。
+        如果未提供这些参数，则会使用当前 QMCv2 对象的同名属性代替。
+        如果两者都为 ``None`` 或未提供，则会触发 ``CrypterSavingError``。
+        """
         warnings.warn(
             DeprecationWarning(
-                f'{type(self).__name__}.from_file() is deprecated and no longer used. '
+                f'{type(self).__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
                 f'Use {type(self).__name__}.save() instead.'
             )
         )
-        return self.save(core_key=core_key,
-                         filething=filething,
-                         garble_key1=garble_key1,
-                         garble_key2=garble_key2,
+        with_extra_info = False
+        if isinstance(self.extra_info, (QMCv2QTag, QMCv2QTag)) and tag_type:
+            with_extra_info = True
+        if master_key_enc_ver == 1:
+            mix_key1 = None
+            mix_key2 = None
+        elif master_key_enc_ver == 2:
+            if mix_key1 is None:
+                mix_key1 = self.garble_key1
+            if mix_key2 is None:
+                mix_key2 = self.garble_key2
+            if mix_key1 is None and mix_key2 is None:
+                raise TypeError(
+                    "argument 'mix_key1' and 'mix_key2' is required to "
+                    "decrypt the QMCv2 Key Encryption V2 protected master key"
+                )
+            elif mix_key1 is None:
+                raise TypeError(
+                    "argument 'mix_key1' is required to "
+                    "decrypt the QMCv2 Key Encryption V2 protected master key"
+                )
+            elif mix_key2 is None:
+                raise TypeError(
+                    "argument 'mix_key2' is required to "
+                    "decrypt the QMCv2 Key Encryption V2 protected master key"
+                )
+        else:
+            raise ValueError("argument 'master_key_enc_ver' must be 1 or 2, "
+                             f"not {master_key_enc_ver}"
+                             )
+        if simple_key is None:
+            simple_key = self.core_key
+        return self.save(core_key=simple_key,
+                         filething=qmcv2_filething,
+                         garble_key1=mix_key1,
+                         garble_key2=mix_key2,
                          with_extra_info=with_extra_info
                          )
 
