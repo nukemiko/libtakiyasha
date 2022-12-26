@@ -710,6 +710,11 @@ class NCM(EncryptedBytesIOSkel):
                 f'You need to manage the core key by your self.'
             )
         )
+        if value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'core_key'. "
+                f"Use `del self.core_key` instead"
+            )
         self._core_key_deprecated = tobytes(value)
 
     @core_key.deleter
@@ -737,6 +742,11 @@ class NCM(EncryptedBytesIOSkel):
     @cover_data.setter
     def cover_data(self, value: BytesLike) -> None:
         """封面图像数据。"""
+        if value is None:
+            raise TypeError(
+                f"None cannot be assigned to attribute 'cover_data'. "
+                f"Use `del self.cover_data` instead"
+            )
         self._cover_data = tobytes(value)
 
     @cover_data.deleter
