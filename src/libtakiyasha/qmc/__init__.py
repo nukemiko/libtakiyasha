@@ -390,9 +390,13 @@ class QMCv1(EncryptedBytesIOSkel):
         else:
             filething, fileinfo = probe_qmcv1(filething_or_info)
 
-        if not isinstance(fileinfo, QMCv1FileInfo):
+        if fileinfo is None:
             raise CrypterCreatingError(
                 f"{repr(filething)} is not a QMCv1 file"
+            )
+        elif not isinstance(fileinfo, QMCv1FileInfo):
+            raise TypeError(
+                f"second element of the tuple must be QMCv1FileInfo or None, not {type(fileinfo).__name__}"
             )
 
         if isfilepath(filething):
@@ -933,9 +937,13 @@ class QMCv2(EncryptedBytesIOSkel):
         else:
             filething, fileinfo = probe_qmcv2(filething_or_info)
 
-        if not isinstance(fileinfo, QMCv2FileInfo):
+        if fileinfo is None:
             raise CrypterCreatingError(
                 f"{repr(filething)} is not a QMCv2 file"
+            )
+        elif not isinstance(fileinfo, QMCv2FileInfo):
+            raise TypeError(
+                f"second element of the tuple must be QMCv2FileInfo or None, not {type(fileinfo).__name__}"
             )
 
         if isfilepath(filething):

@@ -513,12 +513,17 @@ class NCM(EncryptedBytesIOSkel):
                     "or a tuple of probe() returns"
                 )
             filething, fileinfo = filething_or_info
-            if fileinfo is None:
-                raise CrypterCreatingError(
-                    f"{repr(filething)} is not a NCM file"
-                )
         else:
             filething, fileinfo = probe(filething_or_info)
+
+        if fileinfo is None:
+            raise CrypterCreatingError(
+                f"{repr(filething)} is not a NCM file"
+            )
+        elif not isinstance(fileinfo, NCMFileInfo):
+            raise TypeError(
+                f"second element of the tuple must be NCMFileInfo or None, not {type(fileinfo).__name__}"
+            )
 
         if isfilepath(filething):
             with open(filething, mode='rb') as fileobj:
