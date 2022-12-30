@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import re
 import warnings
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
@@ -20,12 +21,16 @@ warnings.filterwarnings(action='default', category=CrypterSavingWarning, module=
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
 __all__ = [
+    'probe',
+    'probe_qmcv1',
     'probe_qmcv2',
     'QMCv1',
     'QMCv2',
     'QMCv2QTag',
     'QMCv2STag'
 ]
+
+QMCV1_SUFFIX_PATTERN = re.compile('\\.qmc[a-zA-Z0-9]{1,4}$', flags=re.IGNORECASE)
 
 
 @dataclass
@@ -89,9 +94,16 @@ class QMCv2STag:
         )
 
 
+class QMCv1FileInfo(NamedTuple):
+    """用于存储 QMCv1 文件的信息。"""
+    cipher_data_offset: int
+    cipher_data_len: int
+
+
 class QMCv2FileInfo(NamedTuple):
     """用于存储 QMCv2 文件的信息。"""
     cipher_ctor: Callable[[...], HardenedRC4] | Callable[[...], Mask128] | None
+    cipher_data_offset: int
     cipher_data_len: int
     master_key_encrypted: bytes | None
     master_key_encryption_ver: int | None
@@ -117,11 +129,69 @@ def _guess_cipher_ctor(master_key: BytesLike, /,
         return Mask128
 
 
+def probe_qmcv1(filething: FilePath | IO[bytes], /, is_qmcv1: bool = False) -> tuple[Path | IO[bytes], QMCv1FileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 QMCv1 文件。
+
+    返回一个 2 个元素长度的元组：
+
+    - 第一个元素为 ``filething``；
+    - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCv1FileInfo`` 对象；
+    - 否则为 ``None``。
+
+    目前难以通过文件结构识别 QMCv1 文件，因此本方法通过文件扩展名判断是否为 QMCv1 文件。
+    只要文件扩展名匹配下列正则表达式模式（不区分大小写），本方法就会将此文件视为一个 QMCv1 文件：
+
+    ``^\\.qmc[a-zA-Z0-9]{1,4}$``
+
+    对于不匹配以上正则表达式的文件扩展名（或者无法获取到文件扩展名），如果参数
+    ``is_qmcv1=True``，本方法会跳过探测过程，认为此文件是一个 QMCv1 文件，并直接返回结果。
+
+    本方法的返回值可以用于 ``QMCv1.open()`` 的第一个位置参数。
+
+    本方法不适用于 QMCv2 文件的探测。
+
+    Args:
+        filething: 源文件的路径或文件对象
+        is_qmcv1: 跳过探测过程，认为源文件是一个 QMCv1 文件
+    Returns:
+        一个 2 个元素长度的元组：第一个元素为 filething；如果
+        filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；否则为 None。
+    """
+
+    def operation(fd: IO[bytes]) -> QMCv1FileInfo | None:
+        filename = getattr(fd, 'name', None)
+        if filename is None and not is_qmcv1:
+            return
+        filepath = Path(filename)
+        if QMCV1_SUFFIX_PATTERN.search(filepath.suffix) or is_qmcv1:
+            return QMCv1FileInfo(
+                cipher_data_offset=0,
+                cipher_data_len=fd.seek(0, 2)
+            )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return Path(filething), operation(fileobj)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return fileobj, prs
+
+
 def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], QMCv2FileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 QMCv2 文件。
 
-    返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
-    ``filething`` 是 QMCv2 文件，那么第二个元素为一个 ``QMCv2FileInfo`` 对象；否则为 ``None``。
+    返回一个 2 个元素长度的元组：
+
+    - 第一个元素为 ``filething``；
+    - 如果 ``filething`` 是 QMCv2 文件，那么第二个元素为一个 ``QMCv2FileInfo`` 对象；
+    - 否则为 ``None``。
 
     本方法的返回值可以用于 ``QMCv2.open()`` 的第一个位置参数。
 
@@ -181,6 +251,7 @@ def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], Q
             cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
 
         return QMCv2FileInfo(cipher_ctor=cipher_ctor,
+                             cipher_data_offset=0,
                              cipher_data_len=cipher_data_len,
                              master_key_encrypted=master_key_encrypted,
                              master_key_encryption_ver=master_key_encryption_ver,
@@ -200,6 +271,33 @@ def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], Q
         fileobj.seek(fileobj_origpos, 0)
 
         return fileobj, prs
+
+
+def probe(
+        filething: FilePath | IO[bytes], /
+) -> tuple[Path | IO[bytes], QMCv1FileInfo | None] | tuple[Path | IO[bytes], QMCv2FileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 QMCv1 或 QMCv2 文件。
+
+    返回一个 2 个元素长度的元组：
+
+    - 第一个元素为 ``filething``；
+    - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCv1FileInfo`` 对象；
+    - 如果 ``filething`` 是 QMCv2 文件，那么第二个元素为一个 ``QMCv2FileInfo`` 对象；
+    - 如果都不是，则为 ``None``。
+
+    本方法的返回值可以用于 ``QMCv1.open()`` 和 ``QMCv2.open()`` 的第一个位置参数。
+
+    Args:
+        filething: 源文件的路径或文件对象
+    Returns:
+        一个 2 个元素长度的元组：第一个元素为 filething；如果
+        filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；如果
+        filething 是 QMCv2 文件，那么第二个元素为一个 QMCv2FileInfo 对象；否则为 None。
+    """
+    fthing, fileinfo = probe_qmcv2(filething)
+    if fileinfo:
+        return fthing, fileinfo
+    return probe_qmcv1(filething)
 
 
 class QMCv1(EncryptedBytesIOSkel):
@@ -247,7 +345,7 @@ class QMCv1(EncryptedBytesIOSkel):
 
     @classmethod
     def open(cls,
-             filething: FilePath | IO[bytes], /,
+             filething_or_info: FilePath | IO[bytes], /,
              mask: BytesLike
              ):
         """打开一个 QMCv1 文件，并返回一个 ``QMCv1`` 对象。
@@ -259,7 +357,7 @@ class QMCv1(EncryptedBytesIOSkel):
         第二个参数 ``mask`` 是必需的，用于主密钥。其长度必须为 44、128 或 256 位。
 
         Args:
-            filething: 源文件的路径或文件对象
+            filething_or_info: 源文件的路径或文件对象
             mask: 文件的主密钥，其长度必须为 44、128 或 256 位
         Raises:
             ValueError: mask 的长度不符合上述要求
@@ -278,8 +376,24 @@ class QMCv1(EncryptedBytesIOSkel):
                     f"the length of argument 'mask' must be 44, 128, or 256, not {len(mask)}"
                 )
 
-            fd.seek(0, 0)
-            return cls(cipher, fd.read())
+            fd.seek(fileinfo.cipher_data_offset, 0)
+            return cls(cipher, fd.read(fileinfo.cipher_data_len))
+
+        if isinstance(filething_or_info, tuple):
+            filething_or_info: tuple[Path | IO[bytes], QMCv1FileInfo | None]
+            if len(filething_or_info) != 2:
+                raise TypeError(
+                    "first argument 'filething_or_info' must be a file path, a file object, "
+                    "or a tuple of probe(), probe_qmcv1() returns"
+                )
+            filething, fileinfo = filething_or_info
+        else:
+            filething, fileinfo = probe_qmcv1(filething_or_info)
+
+        if not isinstance(fileinfo, QMCv1FileInfo):
+            raise CrypterCreatingError(
+                f"{repr(filething)} is not a QMCv1 file"
+            )
 
         if isfilepath(filething):
             with open(filething, mode='rb') as fileobj:
@@ -299,7 +413,7 @@ class QMCv1(EncryptedBytesIOSkel):
         return instance
 
     def to_file(self, qmcv1_filething: FilePath | IO[bytes] = None, /) -> None:
-        """v
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv2.save()`` 代替。）
 
         将当前 QMCv1 对象的内容保存到文件 ``qmcv1_filething``。
 
@@ -539,7 +653,7 @@ class QMCv2(EncryptedBytesIOSkel):
         if value is None:
             raise TypeError(
                 f"None cannot be assigned to attribute 'garble_key1'. "
-                f"Use `del self.core_key` instead"
+                f"Use `del self.garble_key1` instead"
             )
         self._garble_key1_deprecated = tobytes(value)
 
@@ -600,7 +714,7 @@ class QMCv2(EncryptedBytesIOSkel):
         if value is None:
             raise TypeError(
                 f"None cannot be assigned to attribute 'garble_key2'. "
-                f"Use `del self.core_key` instead"
+                f"Use `del self.garble_key2` instead"
             )
         self._garble_key2_deprecated = tobytes(value)
 
@@ -685,7 +799,7 @@ class QMCv2(EncryptedBytesIOSkel):
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
-        ``filething_or_info`` 也可以接受 ``probe_qmcv2()`` 函数的返回值：
+        ``filething_or_info`` 也可以接受 ``probe()`` 和 ``probe_qmcv2()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
         第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
@@ -705,10 +819,10 @@ class QMCv2(EncryptedBytesIOSkel):
         - ``'rc4'`` - 强化版 RC4（HardenedRC4）
         - ``None`` - 不指定，由 ``probe_qmcv2()`` 自行探测
 
-        此参数的设置会覆盖 ``probe_qmcv2()`` 的探测结果。
+        此参数的设置会覆盖 ``probe()`` 或 ``probe_qmcv2()`` 的探测结果。
 
         Args:
-            filething_or_info: 源文件的路径或文件对象，或者 probe_qmcv2() 的返回值
+            filething_or_info: 源文件的路径或文件对象，或者 probe() 和 probe_qmcv2() 的返回值
             core_key: 核心密钥，用于解密文件内嵌的主密钥
             garble_key1: 混淆密钥 1，用于解密使用 V2 加密的主密钥
             garble_key2: 混淆密钥 2，用于解密使用 V2 加密的主密钥
@@ -813,15 +927,16 @@ class QMCv2(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe_qmcv2() returns"
+                    "or a tuple of probe(), probe_qmcv2() returns"
                 )
             filething, fileinfo = filething_or_info
-            if fileinfo is None:
-                raise CrypterCreatingError(
-                    f"{repr(filething)} is not a QMCv2 file"
-                )
         else:
             filething, fileinfo = probe_qmcv2(filething_or_info)
+
+        if not isinstance(fileinfo, QMCv2FileInfo):
+            raise CrypterCreatingError(
+                f"{repr(filething)} is not a QMCv2 file"
+            )
 
         if isfilepath(filething):
             with open(filething, mode='rb') as fileobj:
