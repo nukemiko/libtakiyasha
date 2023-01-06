@@ -8,7 +8,7 @@ try:
     import io
 except ImportError:
     import _pyio as io
-from typing import Generator
+from typing import Generator, Literal
 
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
@@ -390,7 +390,11 @@ class ARC4(KeyStreamBasedStreamCipherSkel):
         if keyname == 'master':
             return self._key
 
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
         offset = toint(offset)
         nbytes = toint(nbytes)
         if offset < 0:

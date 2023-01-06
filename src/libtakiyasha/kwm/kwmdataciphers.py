@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Generator
+from typing import Generator, Literal
 
 from ..miscutils import bytestrxor
 from ..prototypes import KeyStreamBasedStreamCipherSkel
@@ -50,7 +50,11 @@ class Mask32(KeyStreamBasedStreamCipherSkel):
             yield from maskblk_data
         yield from maskblk_data[:target_after_maskblk_area_len]
 
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
         yield from self.cls_keystream(self._mask32, nbytes, offset)
 
 

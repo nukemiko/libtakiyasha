@@ -4,7 +4,7 @@ from __future__ import annotations
 import array
 import mmap
 from os import PathLike
-from typing import ByteString, Iterable, Iterator, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
+from typing import ByteString, Iterable, Iterator, Literal, Protocol, Sequence, SupportsBytes, SupportsIndex, SupportsInt, TypeVar, Union, runtime_checkable
 
 __all__ = [
     'T',
@@ -69,7 +69,11 @@ class KeyStreamBasedStreamCipherProto(Protocol):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         raise NotImplementedError
 
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike = 0, /) -> Iterator[int]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike = 0, /
+                  ) -> Iterator[int]:
         raise NotImplementedError
 
     def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:

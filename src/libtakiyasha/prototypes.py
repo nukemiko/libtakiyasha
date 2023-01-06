@@ -63,7 +63,7 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
     - ``prexor_decrypt()`` - 解密前对密文的预处理，被 ``decrypt()`` 使用
     - ``postxor_decrypt()`` - 解密后对明文的后处理，被 ``decrypt()`` 使用
 
-    以上可选方法的实现必须接受一个类字节对象，并返回一个由整数组成的可迭代对象。
+    以上可选方法的实现必须接受一个类字节对象和一个整数，并返回一个由整数组成的可迭代对象。
     """
 
     @abstractmethod
@@ -71,11 +71,16 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
         """返回一个生成器对象，对其进行迭代，即可得到从起始点
         ``offset`` 开始，持续一定长度 ``nbytes`` 的密钥流。
 
         Args:
+            operation: 针对特定的操作生成密钥流（加密 encrypt 和解密 decrypt）
             offset: 密钥流的起始点，不应为负数
             nbytes: 密钥流的长度，不应为负数
         """
@@ -91,17 +96,17 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         plaindata = tobytes(plaindata)
         offset = toint(offset)
 
-        prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'prexor_encrypt', None)
-        postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'postxor_encrypt', None)
-        keystream = self.keystream(len(plaindata), offset)
+        prexor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self, 'prexor_encrypt', None)
+        postxor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self, 'postxor_encrypt', None)
+        keystream = self.keystream('encrypt', len(plaindata), offset)
 
         if prexor:
-            pd_strm = prexor(plaindata)
+            pd_strm = prexor(plaindata, offset)
         else:
             pd_strm = plaindata
         cd_noxor_strm = (pd_byte ^ ks_byte for pd_byte, ks_byte in zip(pd_strm, keystream))
         if postxor:
-            cd_strm = postxor(cd_noxor_strm)
+            cd_strm = postxor(cd_noxor_strm, offset)
         else:
             cd_strm = cd_noxor_strm
 
@@ -119,7 +124,7 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
 
         prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'prexor_decrypt', None)
         postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'postxor_decrypt', None)
-        keystream = self.keystream(len(cipherdata), offset)
+        keystream = self.keystream('decrypt', len(cipherdata), offset)
 
         if prexor:
             cd_strm = prexor(cipherdata)
@@ -652,16 +657,28 @@ class EncryptedBytesIOSkel(io.BytesIO):
     @classmethod
     def verify_stream_cipher(cls,
                              cipher: KeyStreamBasedStreamCipherProto | StreamCipherProto
-                             ) -> tuple[bool, bool, bool]:
-        keystream_available = True
+                             ) -> tuple[bool, bool, bool, bool]:
+        keystream_encrypt_available = True
+        keystream_decrypt_available = True
         encrypt_available = True
         decrypt_available = True
         # 验证 keystream()
         if isinstance(cipher, KeyStreamBasedStreamCipherProto):
             try:
-                ks = cipher.keystream(randint(0, 255), randint(0, 8191))
+                ks = cipher.keystream('encrypt', randint(0, 255), randint(0, 8191))
             except NotImplementedError:
-                keystream_available = False
+                keystream_encrypt_available = False
+            except Exception as exc:
+                raise TypeError(f"{repr(cipher)} is not a valid cipher object") from exc
+            else:
+                if not all(map(lambda _: isinstance(_, int), ks)):
+                    raise TypeError(
+                        f"result of {repr(cipher)}.keystream() returns non-int during iterating"
+                    )
+            try:
+                ks = cipher.keystream('decrypt', randint(0, 255), randint(0, 8191))
+            except NotImplementedError:
+                keystream_decrypt_available = False
             except Exception as exc:
                 raise TypeError(f"{repr(cipher)} is not a valid cipher object") from exc
             else:
@@ -670,7 +687,8 @@ class EncryptedBytesIOSkel(io.BytesIO):
                         f"result of {repr(cipher)}.keystream() returns non-int during iterating"
                     )
         elif isinstance(cipher, StreamCipherProto):
-            keystream_available = False
+            keystream_encrypt_available = False
+            keystream_decrypt_available = False
         else:
             raise TypeError(f"{repr(cipher)} is not a cipher object")
 
@@ -698,7 +716,7 @@ class EncryptedBytesIOSkel(io.BytesIO):
                     f"{repr(cipher)}.decrypt() returns non-bytes (type {type(decrypt_result).__name__})"
                 )
 
-        return encrypt_available, decrypt_available, keystream_available
+        return encrypt_available, decrypt_available, keystream_encrypt_available, keystream_decrypt_available
 
     @property
     def acceptable_ciphers(self) -> list[Type[StreamCipherProto] | Type[KeyStreamBasedStreamCipherProto]]:
@@ -712,7 +730,7 @@ class EncryptedBytesIOSkel(io.BytesIO):
                  initial_bytes: BytesLike = b''
                  ) -> None:
         super().__init__(tobytes(initial_bytes))
-        self._encrypt_available, self._decrypt_available, self._keystream_available = self.verify_stream_cipher(cipher)
+        self._encrypt_available, self._decrypt_available, self._keystream_encrypt_available, self._keystream_decrypt_available = self.verify_stream_cipher(cipher)
         self._cipher = cipher
         if self.acceptable_ciphers:
             if not isinstance(self._cipher, tuple(self.acceptable_ciphers)):
@@ -735,36 +753,41 @@ class EncryptedBytesIOSkel(io.BytesIO):
         self._ITER_WITHOUT_CRYPTLAYER = False
 
     def _iterencrypt(self, plaindata: bytes, offset: int, /) -> Generator[int, None, None]:
-        encrypt = self._cipher.encrypt
-        iterprexor_plaindata: Callable[[bytes], Iterator[int]] | None = getattr(self, '_iterprexor_plaindata', None)
+        if self._keystream_encrypt_available:
+            prexor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_encrypt', None)
+            postxor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_encrypt', None)
+            keystream = self._cipher.keystream('encrypt', len(plaindata), offset)
 
-        if not self._keystream_available:
-            yield from encrypt(plaindata, offset)
-        elif iterprexor_plaindata:
-            keystream = self._cipher.keystream
-            for prexor_pb_byte, ks_byte in zip(iterprexor_plaindata(plaindata), keystream(len(plaindata), offset)):
-                yield prexor_pb_byte ^ ks_byte
+            if prexor:
+                pd_strm = prexor(plaindata, offset)
+            else:
+                pd_strm = plaindata
+            cd_noxor_strm = (pd_byte ^ ks_byte for pd_byte, ks_byte in zip(pd_strm, keystream))
+            if postxor:
+                cd_strm = postxor(cd_noxor_strm, offset)
+            else:
+                cd_strm = cd_noxor_strm
         else:
-            keystream = self._cipher.keystream
-            for pd_byte, ks_byte in zip(plaindata, keystream(len(plaindata), offset)):
-                yield pd_byte ^ ks_byte
+            cd_strm = self._cipher.encrypt(plaindata, offset)
+
+        yield from cd_strm
 
     def _iterdecrypt(self, cipherdata: bytes, offset: int, /) -> Generator[int, None, None]:
         if not cipherdata:
             return
 
-        if self._keystream_available:
-            prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
-            postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
-            keystream = self._cipher.keystream(len(cipherdata), offset)
+        if self._keystream_decrypt_available:
+            prexor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
+            postxor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
+            keystream = self._cipher.keystream('decrypt', len(cipherdata), offset)
 
             if prexor:
-                cd_strm = prexor(cipherdata)
+                cd_strm = prexor(cipherdata, offset)
             else:
                 cd_strm = cipherdata
             pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
             if postxor:
-                pd_strm = postxor(pd_noxor_strm)
+                pd_strm = postxor(pd_noxor_strm, offset)
             else:
                 pd_strm = pd_noxor_strm
         else:
@@ -776,18 +799,18 @@ class EncryptedBytesIOSkel(io.BytesIO):
         if not cipherdata:
             return
 
-        if self._keystream_available:
-            prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
-            postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
-            keystream = self._cipher.keystream(len(cipherdata), offset)
+        if self._keystream_decrypt_available:
+            prexor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'prexor_decrypt', None)
+            postxor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self._cipher, 'postxor_decrypt', None)
+            keystream = self._cipher.keystream('decrypt', len(cipherdata), offset)
 
             if prexor:
-                cd_strm = prexor(cipherdata)
+                cd_strm = prexor(cipherdata, offset)
             else:
                 cd_strm = cipherdata
             pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
             if postxor:
-                pd_strm = postxor(pd_noxor_strm)
+                pd_strm = postxor(pd_noxor_strm, offset)
             else:
                 pd_strm = pd_noxor_strm
         else:

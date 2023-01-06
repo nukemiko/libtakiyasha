@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Generator
+from typing import Generator, Literal
 
 from .qmcconsts import KEY256_MAPPING
 from ..prototypes import KeyStreamBasedStreamCipherSkel
@@ -73,7 +73,11 @@ class Mask128(KeyStreamBasedStreamCipherSkel):
             yield from commonblk_data
         yield from commonblk_data[:target_after_commonblk_area_len]
 
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
         yield from self.cls_keystream(self._mask128, nbytes, offset)
 
     @classmethod
@@ -210,7 +214,11 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
             if i >= 0:
                 yield box[(box[j] + box[k]) % key_len]
 
-    def keystream(self, nbytes: IntegerLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
         pending = toint(nbytes)
         done = 0
         offset = toint(offset)
