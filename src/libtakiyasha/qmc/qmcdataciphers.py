@@ -34,9 +34,9 @@ class Mask128(KeyStreamBasedStreamCipherSkel):
         nbytes = toint(nbytes)
         offset = toint(offset)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
+            raise ValueError("third argument 'offset' must be a non-negative integer")
         if nbytes < 0:
-            raise ValueError("first argument 'nbytes' must be a non-negative integer")
+            raise ValueError("second argument 'nbytes' must be a non-negative integer")
 
         firstblk_data = mask * 256  # 前 32768 字节
         secondblk_data = firstblk_data[1:-1]  # 第 32769 至 65535 字节
@@ -223,9 +223,9 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
         done = 0
         offset = toint(offset)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
+            raise ValueError("third argument 'offset' must be a non-negative integer")
         if pending < 0:
-            raise ValueError("first argument 'nbytes' must be a non-negative integer")
+            raise ValueError("second argument 'nbytes' must be a non-negative integer")
 
         def mark(p: int) -> None:
             nonlocal pending, done, offset

@@ -398,9 +398,9 @@ class ARC4(KeyStreamBasedStreamCipherSkel):
         offset = toint(offset)
         nbytes = toint(nbytes)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
+            raise ValueError("third argument 'offset' must be a non-negative integer")
         if nbytes < 0:
-            raise ValueError("first argument 'nbytes' must be a non-negative integer")
+            raise ValueError("second argument 'nbytes' must be a non-negative integer")
 
         for i in range(offset, offset + nbytes):
             yield self._meta_keystream[i % 256]

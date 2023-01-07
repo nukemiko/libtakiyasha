@@ -26,9 +26,9 @@ class Mask32(KeyStreamBasedStreamCipherSkel):
         offset = toint(offset)
         nbytes = toint(nbytes)
         if offset < 0:
-            raise ValueError("second argument 'offset' must be a non-negative integer")
+            raise ValueError("third argument 'offset' must be a non-negative integer")
         if nbytes < 0:
-            raise ValueError("first argument 'nbytes' must be a non-negative integer")
+            raise ValueError("second argument 'nbytes' must be a non-negative integer")
         maskblk_data: bytes = tobytes(mask32)
         maskblk_len = len(maskblk_data)
         if maskblk_len != 32:
