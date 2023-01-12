@@ -122,17 +122,17 @@ class KeyStreamBasedStreamCipherSkel(metaclass=ABCMeta):
         cipherdata = tobytes(cipherdata)
         offset = toint(offset)
 
-        prexor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'prexor_decrypt', None)
-        postxor: Callable[[BytesLike], Iterator[int]] | None = getattr(self, 'postxor_decrypt', None)
+        prexor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self, 'prexor_decrypt', None)
+        postxor: Callable[[BytesLike, IntegerLike], Iterator[int]] | None = getattr(self, 'postxor_decrypt', None)
         keystream = self.keystream('decrypt', len(cipherdata), offset)
 
         if prexor:
-            cd_strm = prexor(cipherdata)
+            cd_strm = prexor(cipherdata, offset)
         else:
             cd_strm = cipherdata
         pd_noxor_strm = (cd_byte ^ ks_byte for cd_byte, ks_byte in zip(cd_strm, keystream))
         if postxor:
-            pd_strm = postxor(pd_noxor_strm)
+            pd_strm = postxor(pd_noxor_strm, offset)
         else:
             pd_strm = pd_noxor_strm
 
