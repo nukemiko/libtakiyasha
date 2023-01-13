@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import IO, NamedTuple
 
 from .kgmvprdataciphers import KGMCryptoLegacy
-from ..exceptions import CrypterCreatingError, CrypterSavingError
+from ..exceptions import CrypterCreatingError
 from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
@@ -22,6 +22,23 @@ class KGMorVPRFileInfo(NamedTuple):
 
 
 def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
+
+    返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
+    ``filething`` 是 KGM 或 VPR 文件，那么第二个元素为一个 ``KGMorVPRFileInfo`` 对象；否则为 ``None``。
+
+    如果 ``filething`` 是 VPR 文件，那么 ``KGMorVPRFileInfo``
+    对象的 ``is_vpr`` 属性为 ``True``；否则为 ``False``。
+
+    本方法的返回值可以用于 ``KGMorVPR.open()`` 的第一个位置参数。
+
+    Args:
+        filething: 源文件的路径或文件对象
+    Returns:
+        一个 2 个元素长度的元组：第一个元素为 filething；如果
+        filething 是 KGM 或 VPR 文件，那么第二个元素为一个 KGMorVPRFileInfo 对象；否则为 None。
+    """
+
     def operation(fd: IO[bytes]) -> KGMorVPRFileInfo | None:
         total_size = fd.seek(0, 2)
         if total_size < 60:
@@ -68,6 +85,19 @@ def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVP
 
 
 class KGMorVPR(EncryptedBytesIOSkel):
+    """基于 BytesIO 的 KGM/VPR 透明加密二进制流。
+
+    所有读写相关方法都会经过透明加密层处理：
+    读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+    调用读写相关方法时，附加参数 ``nocryptlayer=True``
+    可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+    如果你要新建一个 KGMorVPR 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+    ``KGMorVPR.new()`` 和 ``KGMorVPR.open()`` 新建或打开已有 KGM/VPR 文件，
+    使用已有 KGMorVPR 对象的 ``save()`` 方法将其保存到文件。
+    """
+
     @property
     def acceptable_ciphers(self):
         return [KGMCryptoLegacy]
@@ -75,7 +105,23 @@ class KGMorVPR(EncryptedBytesIOSkel):
     def __init__(self,
                  cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
                  initial_bytes: BytesLike = b''
-                 ):
+                 ) -> None:
+        """基于 BytesIO 的 KGM/VPR 透明加密二进制流。
+
+        所有读写相关方法都会经过透明加密层处理：
+        读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+        调用读写相关方法时，附加参数 ``nocryptlayer=True``
+        可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+        如果你要新建一个 KGMorVPR 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+        ``KGMorVPR.new()`` 和 ``KGMorVPR.open()`` 新建或打开已有 KGM/VPR 文件，
+        使用已有 KGMorVPR 对象的 ``save()`` 方法将其保存到文件。
+
+        Args:
+            cipher: 要使用的 cipher，必须是一个 libtakiyasha.kgmvpr.kgmvprdataciphers.KGMCryptoLegacy 对象
+            initial_bytes: 内置缓冲区的初始数据
+        """
         super().__init__(cipher, initial_bytes)
 
         self._source_file_header_data: bytes | None = None
@@ -88,6 +134,23 @@ class KGMorVPR(EncryptedBytesIOSkel):
                   tablev2: BytesLike,
                   vpr_key: BytesLike = None
                   ):
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``KGMorVPR.open()`` 代替。）
+
+        打开一个 KGMorVPR 文件或文件对象 ``kgm_vpr_filething``。
+
+        第一个位置参数 ``kgm_vpr_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``kgm_vpr_filething``
+        也可以是一个文件对象，但必须可读、可跳转（``kgm_vpr_filething.seekable() == True``）。
+
+        参数 ``table1``、``table2``、``tablev2`` 都是必选参数，
+        因为它们会参与到内置透明加密层的创建过程中，并且在加密/解密过程中发挥关键作用。
+        这三个参数的都必须是类字节对象，且转换为 ``bytes`` 后，长度为 272 字节。
+
+        本方法会寻找文件内嵌主密钥的位置和加密方式，进而判断所用加密算法的类型。
+
+        如果探测到 ``VPR`` 文件，那么参数 ``vpr_key`` 是必选的：必须是类字节对象，且转换为 ``bytes``
+        后的长度为 17 字节。
+        """
         return cls.open(kgm_vpr_filething,
                         table1=table1,
                         table2=table2,
@@ -103,6 +166,28 @@ class KGMorVPR(EncryptedBytesIOSkel):
              tablev2: BytesLike,
              vpr_key: BytesLike = None
              ):
+        """打开一个 KGMorVPR 文件，并返回一个 ``KGMorVPR`` 对象。
+
+        第一个位置参数 ``filething_or_info`` 需要是一个文件路径或文件对象。
+        可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
+        如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
+
+        ``filething_or_info`` 也可以接受 ``probe()`` 函数的返回值：
+        一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
+
+        第二、三、四个参数 ``table1``、``table2`` 和 ``tablev2``
+        是必需的，都必须是 272 字节长度的字节串。
+
+        如果探测到 VPR 文件，那么第五个参数 ``vpr_key``
+        是必需的。如果提供，则必须是 17 字节长度的字节串。其他情况下，此参数会被忽略。
+
+        Args:
+            filething_or_info: 源文件的路径或文件对象，或者 probe() 的返回值
+            table1: 解码表 1
+            table2: 解码表 2
+            tablev2: 解码表 3
+            vpr_key: 针对 VPR 文件额外所需的密钥
+        """
         # if table1 is not None:
         #     table1 = tobytes(table1)
         # if table2 is not None:
@@ -179,16 +264,46 @@ class KGMorVPR(EncryptedBytesIOSkel):
         return instance
 
     def to_file(self, kgm_vpr_filething: FilePath | IO[bytes] = None) -> None:
+        """（已弃用，且将会在后续版本中删除。请尽快使用 ``KGMorVPR.save()`` 代替。）
+
+        将当前 KGMorVPR 对象的内容保存到文件 ``kgm_vpr_filething``。
+
+        第一个位置参数 ``kgm_vpr_filething`` 可以是文件路径（``str``、``bytes``
+        或任何拥有方法 ``__fspath__()`` 的对象）。``kgm_vpr_filething``
+        也可以是一个文件对象，但必须可写。
+
+        本方法会首先尝试写入 ``kgm_vpr_filething`` 指向的文件。
+        如果未提供 ``kgm_vpr_filething``，则会尝试写入 ``self.name``
+        指向的文件。如果两者都为空或未提供，则会触发 ``CrypterSavingError``。
+
+        目前无法生成 KGM/VPR 文件的标头数据，因此本方法不能用于保存通过 ``KGMorVPR.new()``
+        创建的 ``KGMorVPR`` 对象。尝试这样做会触发 ``NotImplementedError``。
+        """
         return self.save(kgm_vpr_filething)
 
     def save(self,
              filething: FilePath | IO[bytes] = None
              ) -> None:
+        """（实验性功能）将当前对象保存为一个新 KGM 或 VPR 文件。
+
+        第一个参数 ``filething`` 是可选的，如果提供此参数，需要是一个文件路径或文件对象。
+        可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
+        如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
+        如果未提供此参数，那么将会尝试使用当前对象的 ``source`` 属性；如果后者也不可用，则引发
+        ``TypeError``。
+
+        目前无法生成 KGM/VPR 文件的标头数据，因此本方法不能用于保存通过 ``KGMorVPR.new()``
+        创建的 ``KGMorVPR`` 对象。尝试这样做会触发 ``NotImplementedError``。
+
+        Args:
+            filething: 目标文件的路径或文件对象
+        """
+
         def operation(fd: IO[bytes]) -> None:
             if self._source_file_header_data is None:
-                raise CrypterSavingError(
+                raise NotImplementedError(
                     f"cannot save current {type(self).__name__} object to file '{str(filething)}', "
-                    f"because it's not open from KGM or VPR file"
+                    f"generate KGM/VPR file header is not supported"
                 )
             fd.seek(0, 0)
             fd.write(self._source_file_header_data)
