@@ -6,6 +6,7 @@ from typing import IO, NamedTuple
 
 from .kgmvprdataciphers import KGMCryptoLegacy
 from ..exceptions import CrypterCreatingError
+from ..keyutils import make_salt
 from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
@@ -327,3 +328,33 @@ class KGMorVPR(EncryptedBytesIOSkel):
                                      verify_writable=True
                                      )
             return operation(fileobj)
+
+    @classmethod
+    def new(cls,
+            table1: BytesLike,
+            table2: BytesLike,
+            tablev2: BytesLike,
+            vpr_key: BytesLike = None
+            ):
+        """返回一个空 KGMorVPR 对象。
+
+        第一、二、三个参数 ``table1``、``table2`` 和 ``tablev2``
+        是必需的，都必须是 272 字节长度的字节串。
+
+        如果提供了第五个参数 ``vpr_key``，那么将会使用针对 VPR 的加密方法；这种情况下
+        ``vpr_key`` 必须是 17 字节长度的字节串。
+
+        注意：通过本方法创建的 ``KGMorVPR`` 对象不可通过 ``save()``
+        方法保存到文件。尝试这样做会触发 ``NotImplementedError``。
+        """
+        table1 = tobytes(table1)
+        table2 = tobytes(table2)
+        tablev2 = tobytes(tablev2)
+        if vpr_key is not None:
+            vpr_key = tobytes(vpr_key)
+
+        core_key_test_data = make_salt(16) + b'\x00'
+
+        cipher = KGMCryptoLegacy(table1, table2, tablev2, core_key_test_data, vpr_key)
+
+        return cls(cipher)
