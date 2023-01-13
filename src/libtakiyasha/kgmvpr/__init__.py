@@ -11,6 +11,8 @@ from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 
+__all__ = ['KGMorVPR', 'probe']
+
 
 class KGMorVPRFileInfo(NamedTuple):
     cipher_data_offset: int
