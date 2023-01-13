@@ -516,6 +516,10 @@ class QMCv2(EncryptedBytesIOSkel):
         如果你要新建一个 QMCv2 对象，不要直接调用 ``__init__()``，而是使用构造器方法
         ``QMCv2.new()`` 和 ``QMCv2.open()`` 新建或打开已有 QMCv2 文件，
         使用已有 QMCv2 对象的 ``save()`` 方法将其保存到文件。
+
+        Args:
+            cipher: 要使用的 cipher，必须是一个 libtakiyasha.qmc.qmcdataciphers.Mask128/HardenedRC4 对象
+            initial_bytes: 内置缓冲区的初始数据
         """
         super().__init__(cipher, initial_bytes)
 

@@ -94,6 +94,19 @@ def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWMFile
 
 
 class KWM(EncryptedBytesIOSkel):
+    """基于 BytesIO 的 KWM 透明加密二进制流。
+
+    所有读写相关方法都会经过透明加密层处理：
+    读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+    调用读写相关方法时，附加参数 ``nocryptlayer=True``
+    可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+    如果你要新建一个 KWM 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+    ``KWM.new()`` 和 ``KWM.open()`` 新建或打开已有 KWM 文件，
+    使用已有 KWM 对象的 ``save()`` 方法将其保存到文件。
+    """
+
     @property
     def acceptable_ciphers(self):
         return [Mask32FromRecipe]
@@ -101,7 +114,23 @@ class KWM(EncryptedBytesIOSkel):
     def __init__(self,
                  cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
                  initial_bytes: BytesLike = b''
-                 ):
+                 ) -> None:
+        """基于 BytesIO 的 KWM 透明加密二进制流。
+
+        所有读写相关方法都会经过透明加密层处理：
+        读取时，返回解密后的数据；写入时，向缓冲区写入加密后的数据。
+
+        调用读写相关方法时，附加参数 ``nocryptlayer=True``
+        可绕过透明加密层，访问缓冲区内的原始加密数据。
+
+        如果你要新建一个 KWM 对象，不要直接调用 ``__init__()``，而是使用构造器方法
+        ``KWM.new()`` 和 ``KWM.open()`` 新建或打开已有 KWM 文件，
+        使用已有 KWM 对象的 ``save()`` 方法将其保存到文件。
+
+        Args:
+            cipher: 要使用的 cipher，必须是一个 libtakiyasha.kwm.kwmdataciphers.Mask32/Mask32FromRecipe 对象
+            initial_bytes: 内置缓冲区的初始数据
+        """
         super().__init__(cipher, initial_bytes=initial_bytes)
 
         self._bitrate: int | None = None
