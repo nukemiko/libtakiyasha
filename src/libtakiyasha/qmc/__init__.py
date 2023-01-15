@@ -27,7 +27,9 @@ __all__ = [
     'QMCv1',
     'QMCv2',
     'QMCv2QTag',
-    'QMCv2STag'
+    'QMCv2STag',
+    'QMCv1FileInfo',
+    'QMCv2FileInfo'
 ]
 
 QMCV1_SUFFIX_PATTERN = re.compile('\\.qmc[a-zA-Z0-9]{1,4}$', flags=re.IGNORECASE)
@@ -345,7 +347,7 @@ class QMCv1(EncryptedBytesIOSkel):
 
     @classmethod
     def open(cls,
-             filething_or_info: FilePath | IO[bytes], /,
+             filething_or_info: tuple[Path | IO[bytes], QMCv1FileInfo | None] | FilePath | IO[bytes], /,
              mask: BytesLike
              ):
         """打开一个 QMCv1 文件，并返回一个 ``QMCv1`` 对象。

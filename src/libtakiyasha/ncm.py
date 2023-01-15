@@ -22,7 +22,7 @@ from .warns import CrypterCreatingWarning
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
-__all__ = ['CloudMusicIdentifier', 'NCM', 'probe']
+__all__ = ['CloudMusicIdentifier', 'NCM', 'probe', 'NCMFileInfo']
 
 MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 

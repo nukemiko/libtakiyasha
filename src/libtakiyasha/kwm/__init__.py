@@ -16,7 +16,7 @@ from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 DIGIT_CHARS = b'0123456789'
 ASCII_LETTER_CHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
-__all__ = ['KWM', 'probe']
+__all__ = ['KWM', 'probe', 'KWMFileInfo']
 
 
 class KWMFileInfo(NamedTuple):
