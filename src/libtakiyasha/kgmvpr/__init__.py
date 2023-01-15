@@ -11,7 +11,7 @@ from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 
-__all__ = ['KGMorVPR', 'probe', 'KGMorVPRFileInfo']
+__all__ = ['KGMorVPR', 'probe_kgmvpr', 'KGMorVPRFileInfo']
 
 
 class KGMorVPRFileInfo(NamedTuple):
@@ -24,7 +24,7 @@ class KGMorVPRFileInfo(NamedTuple):
     is_vpr: bool
 
 
-def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
+def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -175,7 +175,7 @@ class KGMorVPR(EncryptedBytesIOSkel):
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
-        ``filething_or_info`` 也可以接受 ``probe()`` 函数的返回值：
+        ``filething_or_info`` 也可以接受 ``probe_kgmvpr()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
         第二、三、四个参数 ``table1``、``table2`` 和 ``tablev2``
@@ -185,7 +185,7 @@ class KGMorVPR(EncryptedBytesIOSkel):
         是必需的。如果提供，则必须是 17 字节长度的字节串。其他情况下，此参数会被忽略。
 
         Args:
-            filething_or_info: 源文件的路径或文件对象，或者 probe() 的返回值
+            filething_or_info: 源文件的路径或文件对象，或者 probe_kgmvpr() 的返回值
             table1: 解码表 1
             table2: 解码表 2
             tablev2: 解码表 3
@@ -234,11 +234,11 @@ class KGMorVPR(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe() returns"
+                    "or a tuple of probe_kgmvpr() returns"
                 )
             filething, fileinfo = filething_or_info
         else:
-            filething, fileinfo = probe(filething_or_info)
+            filething, fileinfo = probe_kgmvpr(filething_or_info)
 
         if fileinfo is None:
             raise CrypterCreatingError(

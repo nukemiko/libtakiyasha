@@ -21,7 +21,7 @@ warnings.filterwarnings(action='default', category=CrypterSavingWarning, module=
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
 __all__ = [
-    'probe',
+    'probe_qmc',
     'probe_qmcv1',
     'probe_qmcv2',
     'QMCv1',
@@ -275,7 +275,7 @@ def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], Q
         return fileobj, prs
 
 
-def probe(
+def probe_qmc(
         filething: FilePath | IO[bytes], /
 ) -> tuple[Path | IO[bytes], QMCv1FileInfo | None] | tuple[Path | IO[bytes], QMCv2FileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 QMCv1 或 QMCv2 文件。
@@ -386,7 +386,7 @@ class QMCv1(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe(), probe_qmcv1() returns"
+                    "or a tuple of probe_qmc(), probe_qmcv1() returns"
                 )
             filething, fileinfo = filething_or_info
         else:
@@ -809,7 +809,7 @@ class QMCv2(EncryptedBytesIOSkel):
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
-        ``filething_or_info`` 也可以接受 ``probe()`` 和 ``probe_qmcv2()`` 函数的返回值：
+        ``filething_or_info`` 也可以接受 ``probe_qmc()`` 和 ``probe_qmcv2()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
         第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
@@ -829,10 +829,10 @@ class QMCv2(EncryptedBytesIOSkel):
         - ``'rc4'`` - 强化版 RC4（HardenedRC4）
         - ``None`` - 不指定，由 ``probe_qmcv2()`` 自行探测
 
-        此参数的设置会覆盖 ``probe()`` 或 ``probe_qmcv2()`` 的探测结果。
+        此参数的设置会覆盖 ``probe_qmc()`` 或 ``probe_qmcv2()`` 的探测结果。
 
         Args:
-            filething_or_info: 源文件的路径或文件对象，或者 probe() 和 probe_qmcv2() 的返回值
+            filething_or_info: 源文件的路径或文件对象，或者 probe_qmc() 和 probe_qmcv2() 的返回值
             core_key: 核心密钥，用于解密文件内嵌的主密钥
             garble_key1: 混淆密钥 1，用于解密使用 V2 加密的主密钥
             garble_key2: 混淆密钥 2，用于解密使用 V2 加密的主密钥
@@ -937,7 +937,7 @@ class QMCv2(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe(), probe_qmcv2() returns"
+                    "or a tuple of probe_qmc(), probe_qmcv2() returns"
                 )
             filething, fileinfo = filething_or_info
         else:

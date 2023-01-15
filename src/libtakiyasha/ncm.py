@@ -22,7 +22,7 @@ from .warns import CrypterCreatingWarning
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
-__all__ = ['CloudMusicIdentifier', 'NCM', 'probe', 'NCMFileInfo']
+__all__ = ['CloudMusicIdentifier', 'NCM', 'probe_ncm', 'NCMFileInfo']
 
 MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 
@@ -314,7 +314,7 @@ class NCMFileInfo(NamedTuple):
     cover_data_len: int
 
 
-def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
+def probe_ncm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 NCM 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -436,7 +436,7 @@ class NCM(EncryptedBytesIOSkel):
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
-        ``filething_or_info`` 也可以接受 ``probe()`` 函数的返回值：
+        ``filething_or_info`` 也可以接受 ``probe_ncm()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
         第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
@@ -450,7 +450,7 @@ class NCM(EncryptedBytesIOSkel):
         一般不需要填写此参数，因为 NCM 文件总是内嵌加密的主密钥，从而可以轻松地获得。
 
         Args:
-            filething_or_info: 源文件的路径或文件对象，或者 probe() 的返回值
+            filething_or_info: 源文件的路径或文件对象，或者 probe_ncm() 的返回值
             core_key: 核心密钥，用于解密文件内嵌的主密钥
             tag_key: 歌曲信息密钥，用于解密文件内嵌的歌曲信息
             master_key: 如果提供，将会被作为主密钥使用，而文件内置的主密钥会被忽略
@@ -510,11 +510,11 @@ class NCM(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe() returns"
+                    "or a tuple of probe_ncm() returns"
                 )
             filething, fileinfo = filething_or_info
         else:
-            filething, fileinfo = probe(filething_or_info)
+            filething, fileinfo = probe_ncm(filething_or_info)
 
         if fileinfo is None:
             raise CrypterCreatingError(

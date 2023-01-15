@@ -16,7 +16,7 @@ from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 DIGIT_CHARS = b'0123456789'
 ASCII_LETTER_CHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
-__all__ = ['KWM', 'probe', 'KWMFileInfo']
+__all__ = ['KWM', 'probe_kwm', 'KWMFileInfo']
 
 
 class KWMFileInfo(NamedTuple):
@@ -27,7 +27,7 @@ class KWMFileInfo(NamedTuple):
     suffix: str
 
 
-def probe(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWMFileInfo | None]:
+def probe_kwm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWMFileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 KWM 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -261,7 +261,7 @@ class KWM(EncryptedBytesIOSkel):
         可接受的文件路径类型包括：字符串、字节串、任何定义了 ``__fspath__()`` 方法的对象。
         如果是文件对象，那么必须可读且可寻址（其 ``seekable()`` 方法返回 ``True``）。
 
-        ``filething_or_info`` 也可以接受 ``probe()`` 函数的返回值：
+        ``filething_or_info`` 也可以接受 ``probe_kwm()`` 函数的返回值：
         一个包含两个元素的元组，第一个元素是源文件的路径或文件对象，第二个元素是源文件的信息。
 
         第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
@@ -271,7 +271,7 @@ class KWM(EncryptedBytesIOSkel):
         而文件内置的主密钥会被忽略，``core_key`` 也不再是必需参数。
 
         Args:
-            filething_or_info: 源文件的路径或文件对象，或者 probe() 的返回值
+            filething_or_info: 源文件的路径或文件对象，或者 probe_kwm() 的返回值
             core_key: 核心密钥，用于生成文件内加密数据的主密钥
             master_key: 如果提供，将会被作为主密钥使用，而文件内置的主密钥会被忽略
         """
@@ -305,11 +305,11 @@ class KWM(EncryptedBytesIOSkel):
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
-                    "or a tuple of probe() returns"
+                    "or a tuple of probe_kwm() returns"
                 )
             filething, fileinfo = filething_or_info
         else:
-            filething, fileinfo = probe(filething_or_info)
+            filething, fileinfo = probe_kwm(filething_or_info)
 
         if fileinfo is None:
             raise CrypterCreatingError(
