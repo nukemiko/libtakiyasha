@@ -13,6 +13,8 @@ from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, IntegerLike, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 
+warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
+
 DIGIT_CHARS = b'0123456789'
 ASCII_LETTER_CHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 

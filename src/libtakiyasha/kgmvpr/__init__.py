@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import IO, NamedTuple
 
@@ -10,6 +11,8 @@ from ..keyutils import make_salt
 from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
+
+warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
 __all__ = ['KGMorVPR', 'probe_kgmvpr', 'KGMorVPRFileInfo']
 
@@ -154,6 +157,13 @@ class KGMorVPR(EncryptedBytesIOSkel):
         如果探测到 ``VPR`` 文件，那么参数 ``vpr_key`` 是必选的：必须是类字节对象，且转换为 ``bytes``
         后的长度为 17 字节。
         """
+        warnings.warn(
+            DeprecationWarning(
+                f'{cls.__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'Use {cls.__name__}.open() instead.'
+            )
+        )
         return cls.open(kgm_vpr_filething,
                         table1=table1,
                         table2=table2,
@@ -282,6 +292,14 @@ class KGMorVPR(EncryptedBytesIOSkel):
         目前无法生成 KGM/VPR 文件的标头数据，因此本方法不能用于保存通过 ``KGMorVPR.new()``
         创建的 ``KGMorVPR`` 对象。尝试这样做会触发 ``NotImplementedError``。
         """
+        warnings.warn(
+            DeprecationWarning(
+                f'{type(self).__name__}.from_file() is deprecated, no longer used, '
+                f'and may be removed in subsequent versions. '
+                f'Use {type(self).__name__}.save() instead.'
+            )
+        )
+
         return self.save(kgm_vpr_filething)
 
     def save(self,

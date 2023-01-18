@@ -418,7 +418,7 @@ class QMCv1(EncryptedBytesIOSkel):
 
         return instance
 
-    def to_file(self, qmcv1_filething: FilePath | IO[bytes] = None, /) -> None:
+    def to_file(self, qmcv1_filething: FilePath | IO[bytes] = None) -> None:
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``QMCv2.save()`` 代替。）
 
         将当前 QMCv1 对象的内容保存到文件 ``qmcv1_filething``。
@@ -440,7 +440,7 @@ class QMCv1(EncryptedBytesIOSkel):
         )
         return self.save(qmcv1_filething)
 
-    def save(self, filething: FilePath | IO[bytes] = None, /) -> None:
+    def save(self, filething: FilePath | IO[bytes] = None) -> None:
         """将当前对象保存为一个新 QMCv1 文件。
 
         第一个参数 ``filething`` 是可选的，如果提供此参数，需要是一个文件路径或文件对象。
