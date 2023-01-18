@@ -29,7 +29,13 @@ MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 
 @dataclass(init=True)
 class CloudMusicIdentifier:
-    """解析、储存和重建网易云音乐 163key 。"""
+    """解析、储存和重建网易云音乐 163key 。
+
+    如果 163key 的来源文件来自网易云音乐客户端，根据你使用的客户端平台和版本，
+    一些字段可能会缺失，从而被设为默认值。
+
+    可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
+    """
 
     def __post_init__(self) -> None:
         self._orig_ncm_tag: dict | None = None
@@ -37,21 +43,35 @@ class CloudMusicIdentifier:
         self._orig_tag_key: bytes | None = None
 
     format: str = ''
+    """文件格式，通常为 ``mp3`` 或 ``flac``。"""
     musicId: str = ''
+    """此歌曲在网易云音乐的 ID。"""
     musicName: str = ''
+    """此歌曲的标题。"""
     artist: list[list[str | int]] = dcfield(default_factory=list)
+    """此歌曲的歌手。"""
     album: str = ''
+    """此歌曲所属的专辑。"""
     albumId: int = 0
+    """此歌曲所属的专辑在网易云音乐平台的 ID。"""
     albumPicDocId: int = 0
+    """此歌曲所属的专辑，其封面在网易云音乐平台的 ID。"""
     albumPic: str = ''
+    """此歌曲所属的专辑，其封面的下载链接。"""
     mvId: int = 0
+    """此歌曲的 MV 在网易云音乐平台的 ID。"""
     flag: int = 0
     bitrate: int = 0
+    """此歌曲的比特率。"""
     duration: int = 0
+    """此歌曲的长度（单位为秒）。"""
     gain: float = 0.0
+    """此歌曲的平均响度。"""
     mp3DocId: str = ''
     alias: list[str] = dcfield(default_factory=list)
+    """此歌曲在网易云音乐平台的别名。"""
     transNames: list[str] = dcfield(default_factory=list)
+    """此歌曲标题在网易云音乐平台的翻译。"""
 
     def to_mutagen_tag(self,
                        tag_type: Literal['FLAC', 'ID3'] = None,
@@ -395,6 +415,40 @@ class NCM(EncryptedBytesIOSkel):
     如果你要新建一个 NCM 对象，不要直接调用 ``__init__()``，而是使用构造器方法
     ``NCM.new()`` 和 ``NCM.open()`` 新建或打开已有 NCM 文件，
     使用已有 NCM 对象的 ``save()`` 方法将其保存到文件。
+
+    使用示例：
+
+    - 新建一个 NCM 对象以便编辑：
+    >>> ncmfile = NCM.new()
+    >>> ncmfile
+    <libtakiyasha.ncm.NCM at 0x7f26c4f4a390, cipher <libtakiyasha.stdciphers.ARC4 object at 0x7f26c51214b0>>
+    >>>
+
+    - 打开一个外部 NCM 文件：
+    >>> ncmfile = NCM.open('/path/to/ncmfile.ncm', core_key=b'YourNCMCoreKey', tag_key=b'YourNCMTagKey')
+    >>> ncmfile
+    <libtakiyasha.ncm.NCM at 0x7f26c44e5080, cipher <libtakiyasha.stdciphers.ARC4 object at 0x7f26c4ef1270>, source '/path/to/ncmfile.ncm'>
+    >>>
+
+    - 读取和写入，注意写入操作产生的修改需要调用 ``save()`` 方法显式保存：
+    >>> ncmfile.read(16)
+    b'fLaC\\x00\\x00\\x00"\\x12\\x00\\x12\\x00\\x00\\x07)\\x00'
+    >>> ncmfile.seek(0, 2)
+    36137109
+    >>> ncmfile.write(b'\\x00Writing something')
+    18
+    >>>
+
+    - 保存上述操作产生的更改
+    >>> # 如果该 NCM 对象不是从文件打开的，还需要 filething 参数
+    >>> ncmfile.save(core_key=b'YourNCMCoreKey', tag_key=b'YourNCMTagKey')
+
+    - 获取歌曲标签和封面信息，详见 ``CloudMusicIdentifier``：
+    >>> ncmfile.ncm_tag
+    CloudMusicIdentifier(format=..., musicId=..., musicName=..., artist=[[..., ...], [..., ...]], album=..., albumId=..., albumPicDocId=..., albumPic=..., mvId=..., flag=..., bitrate=..., duration=..., gain=..., mp3DocId=..., alias=[...], transNames=[...])
+    >>> len(ncmfile.cover_data)
+    141248
+    >>>
     """
 
     @classmethod
