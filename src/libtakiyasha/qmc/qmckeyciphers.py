@@ -4,40 +4,40 @@ from __future__ import annotations
 from base64 import b64decode, b64encode
 from math import tan
 
-from ..common import CipherSkel
 from ..exceptions import CipherDecryptingError, CipherEncryptingError
+from ..prototypes import CipherSkel
 from ..stdciphers import TarsCppTCTEAWithModeCBC
 from ..typedefs import BytesLike
 from ..typeutils import tobytes
 
 __all__ = [
-    'make_simple_key',
+    'make_core_key',
     'QMCv2KeyEncryptV1',
     'QMCv2KeyEncryptV2'
 ]
 
 
-def make_simple_key(salt: int, length: int) -> bytes:
+def make_core_key(salt: int, length: int) -> bytes:
     return bytes(int(abs(tan(salt + _ * 0.1) * 100)) for _ in range(length))
 
 
 class QMCv2KeyEncryptV1(CipherSkel):
-    @property
-    def simple_key(self) -> bytes:
-        return self._simple_key
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._core_key
 
-    def __init__(self, simple_key: BytesLike, /):
-        self._simple_key = tobytes(simple_key)
+    def __init__(self, key: BytesLike, /):
+        self._core_key = tobytes(key)
 
         self._half_of_keysize = TarsCppTCTEAWithModeCBC.master_key_size // 2
-        if len(self._simple_key) != self._half_of_keysize:
-            raise ValueError(f"invalid length of simple key: "
-                             f"should be {self._half_of_keysize}, not {len(self._simple_key)}"
+        if len(self._core_key) != self._half_of_keysize:
+            raise ValueError(f"invalid length of core key: "
+                             f"should be {self._half_of_keysize}, not {len(self._core_key)}"
                              )
 
         self._key_buf = bytearray(TarsCppTCTEAWithModeCBC.master_key_size)
         for idx in range(TarsCppTCTEAWithModeCBC.blocksize):
-            self._key_buf[idx << 1] = self._simple_key[idx]
+            self._key_buf[idx << 1] = self._core_key[idx]
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
@@ -76,26 +76,26 @@ class QMCv2KeyEncryptV1(CipherSkel):
 
 
 class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
-    @property
-    def mix_key1(self) -> bytes:
-        return self._mix_key1
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._core_key
+        elif keyname == 'garble1':
+            return self._garble_key1
+        elif keyname == 'garble2':
+            return self._garble_key2
 
-    @property
-    def mix_key2(self) -> bytes:
-        return self._mix_key2
+    def __init__(self, key: BytesLike, garble_key1: BytesLike, garble_key2: BytesLike, /):
+        self._garble_key1 = tobytes(garble_key1)
+        self._garble_key2 = tobytes(garble_key2)
 
-    def __init__(self, simple_key: BytesLike, mix_key1: BytesLike, mix_key2: BytesLike, /):
-        self._mix_key1 = tobytes(mix_key1)
-        self._mix_key2 = tobytes(mix_key2)
-
-        self._encrypt_stage1_decrypt_stage2_tea_cipher = TarsCppTCTEAWithModeCBC(self._mix_key2,
+        self._encrypt_stage1_decrypt_stage2_tea_cipher = TarsCppTCTEAWithModeCBC(self._garble_key2,
                                                                                  rounds=32
                                                                                  )
-        self._encrypt_stage2_decrypt_stage1_tea_cipher = TarsCppTCTEAWithModeCBC(self._mix_key1,
+        self._encrypt_stage2_decrypt_stage1_tea_cipher = TarsCppTCTEAWithModeCBC(self._garble_key1,
                                                                                  rounds=32
                                                                                  )
 
-        super().__init__(simple_key)
+        super().__init__(key)
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
         plaindata = tobytes(plaindata)
@@ -104,11 +104,15 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         qmcv2_key_encv1_key_encrypted_b64encoded = b64encode(qmcv2_key_encv1_key_encrypted)
 
         try:
-            encrypt_stage1 = self._encrypt_stage1_decrypt_stage2_tea_cipher.encrypt(qmcv2_key_encv1_key_encrypted_b64encoded)
+            encrypt_stage1 = self._encrypt_stage1_decrypt_stage2_tea_cipher.encrypt(
+                qmcv2_key_encv1_key_encrypted_b64encoded
+            )
         except Exception as exc:
             raise CipherEncryptingError('QMCv2 key encrypt v2 stage 1 key encrypt failed') from exc
         try:
-            encrypt_stage2 = self._encrypt_stage2_decrypt_stage1_tea_cipher.encrypt(encrypt_stage1)
+            encrypt_stage2 = self._encrypt_stage2_decrypt_stage1_tea_cipher.encrypt(
+                encrypt_stage1
+            )
         except Exception as exc:
             raise CipherEncryptingError('QMCv2 key encrypt v2 stage 2 key encrypt failed') from exc
 
@@ -119,11 +123,15 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
         # cipherdata 应当是 b64decode 之后，去除了开头 18 个字符的结果
 
         try:
-            decrypt_stage1: bytes = self._encrypt_stage2_decrypt_stage1_tea_cipher.decrypt(cipherdata, zero_check=True)
+            decrypt_stage1: bytes = self._encrypt_stage2_decrypt_stage1_tea_cipher.decrypt(
+                cipherdata, zero_check=True
+            )
         except Exception as exc:
             raise CipherDecryptingError('QMCv2 key encrypt v2 stage 1 key decrypt failed') from exc
         try:
-            decrypt_stage2: bytes = self._encrypt_stage1_decrypt_stage2_tea_cipher.decrypt(decrypt_stage1, zero_check=True)  # 实际上就是 QMCv2 Key Encrypt V1 的密钥
+            decrypt_stage2: bytes = self._encrypt_stage1_decrypt_stage2_tea_cipher.decrypt(
+                decrypt_stage1, zero_check=True
+            )  # 实际上就是 QMCv2 Key Encrypt V1 的密钥
         except Exception as exc:
             raise CipherDecryptingError('QMCv2 key encrypt v2 stage 2 key decrypt failed') from exc
 

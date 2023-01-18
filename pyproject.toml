@@ -4,13 +4,15 @@ dynamic = ["dependencies", "readme", "version"]
 authors = [
     { name = "nukemiko" },
 ]
-description = "Python 音乐加解密工具库"
+description = "多种加密方案的 Python 实现"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Multimedia :: Sound/Audio",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10"
@@ -24,8 +26,8 @@ keywords = ["unlock", "music", "audio", "qmc", "ncm", "mflac", "mgg", "netease",
 "Releases" = "https://github.com/nukemiko/libtakiyasha/releases"
 
 [build-system]
-requires = ["setuptools >= 46.4.0"]
 build-backend = "setuptools.build_meta"
+requires = ["setuptools >= 46.4.0"]
 
 [tool.setuptools]
 include-package-data = true

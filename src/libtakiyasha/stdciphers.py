@@ -8,16 +8,16 @@ try:
     import io
 except ImportError:
     import _pyio as io
-from typing import Generator
+from typing import Generator, Literal
 
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .common import StreamCipherSkel, CipherSkel
+from .prototypes import KeyStreamBasedStreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
 from .miscutils import bytestrxor
-from .typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
+from .typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = [
     'StreamedAESWithModeECB',
@@ -34,9 +34,9 @@ class StreamedAESWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @property
-    def master_key(self) -> bytes:
-        return self._key
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._key
 
     def __init__(self, key: BytesLike, /) -> None:
         self._key = tobytes(key)
@@ -59,10 +59,9 @@ class TEAWithModeECB(CipherSkel):
     def blocksize(self) -> int:
         return 16
 
-    @property
-    def master_key(self) -> bytes:
-        """主要的密钥。"""
-        return self._key
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._key
 
     def __init__(self,
                  key: BytesLike,
@@ -71,8 +70,8 @@ class TEAWithModeECB(CipherSkel):
                  magic_number: IntegerLike = 0x9e3779b9
                  ) -> None:
         self._key = tobytes(key)
-        self._rounds = toint_nofloat(rounds)
-        self._delta = toint_nofloat(magic_number)
+        self._rounds = toint(rounds)
+        self._delta = toint(magic_number)
 
         if len(self._key) != self.blocksize:
             raise ValueError(f"invalid key length: should be {self.blocksize}, not {len(self._key)}")
@@ -91,7 +90,8 @@ class TEAWithModeECB(CipherSkel):
         return v0, v1, k0, k1, k2, k3
 
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), self.master_key)
+        master_key = self.getkey('master')
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(plaindata), master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -108,7 +108,8 @@ class TEAWithModeECB(CipherSkel):
         return v0.to_bytes(4, 'big') + v1.to_bytes(4, 'big')
 
     def decrypt(self, cipherdata: BytesLike, /) -> bytes:
-        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), self.master_key)
+        master_key = self.getkey('master')
+        v0, v1, k0, k1, k2, k3 = self.transvalues(tobytes(cipherdata), master_key)
 
         delta = self._delta
         rounds = self._rounds
@@ -126,6 +127,10 @@ class TEAWithModeECB(CipherSkel):
 
 
 class TarsCppTCTEAWithModeCBC(CipherSkel):
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._lower_level_tea_cipher.getkey('master')
+
     @CachedClassInstanceProperty
     def blocksize(self) -> int:
         return 8
@@ -141,11 +146,6 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
     @CachedClassInstanceProperty
     def zero_len(self) -> int:
         return 7
-
-    @property
-    def master_key(self) -> bytes:
-        """主要的密钥。"""
-        return self._lower_level_tea_cipher.master_key
 
     @property
     def lower_level_cipher(self) -> TEAWithModeECB:
@@ -166,8 +166,8 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
             magic_number: 加/解密使用的魔数
         """
         key = tobytes(key)
-        rounds = toint_nofloat(rounds)
-        magic_number = toint_nofloat(magic_number)
+        rounds = toint(rounds)
+        magic_number = toint(magic_number)
         if len(key) != self.master_key_size:
             raise ValueError(f"invalid key length {len(key)}: "
                              f"should be {self.master_key_size}, not {len(key)}"
@@ -353,11 +353,7 @@ class TarsCppTCTEAWithModeCBC(CipherSkel):
         return bytes(out_buf)
 
 
-class ARC4(StreamCipherSkel):
-    @property
-    def master_key(self) -> bytes:
-        return self._key
-
+class ARC4(KeyStreamBasedStreamCipherSkel):
     def __init__(self, key: BytesLike, /) -> None:
         """标准的 RC4 加密算法实现。
 
@@ -390,13 +386,21 @@ class ARC4(StreamCipherSkel):
 
         self._meta_keystream = bytes(meta_keystream)
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        offset = toint_nofloat(offset)
-        length = toint_nofloat(length)
-        if offset < 0:
-            raise ValueError("first argument 'offset' must be a non-negative integer")
-        if length < 0:
-            raise ValueError("second argument 'length' must be a non-negative integer")
+    def getkey(self, keyname: str = 'master') -> bytes:
+        if keyname == 'master':
+            return self._key
 
-        for i in range(offset, offset + length):
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
+        offset = toint(offset)
+        nbytes = toint(nbytes)
+        if offset < 0:
+            raise ValueError("third argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("second argument 'nbytes' must be a non-negative integer")
+
+        for i in range(offset, offset + nbytes):
             yield self._meta_keystream[i % 256]

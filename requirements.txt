@@ -1,2 +1,2 @@
 pyaes
-setuptools
+mutagen

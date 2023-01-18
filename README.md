@@ -1,141 +1,79 @@
-# libtakiyasha ![](https://img.shields.io/badge/Version-2.0.1-green) ![](https://img.shields.io/badge/Python-3.8%2B-blue)
+# LibTakiyasha ![](https://img.shields.io/badge/Python-3.8%2B-blue)
 
-`libtakiyasha` 是一个 Python 音频加密/解密工具库（当然也可用于加密非音频数据），支持多种加密文件格式。
+LibTakiyasha 是一个 Python 音频加密/解密工具库（当然也可用于加密非音频数据），支持多种加密文件格式。**不提供任何命令行或图形界面支持。**
 
-`libtakiyasha` 只是一个工具库，不提供任何命令行或图形界面支持。
-
----
+## 使用前必读
 
 **本项目是以学习和技术研究的初衷创建的，修改、再分发时请遵循 [License](LICENSE)。**
 
 本项目的设计灵感，以及部分解密方案，来源于：
 
--   [Unlock Music - Web Edition](https://git.unlock-music.dev/um/web)
--   [jixunmoe/qmc2](https://github.com/jixunmoe/qmc2)
+-   [Unlock Music Project - CLI Edition](https://git.unlock-music.dev/um/cli)
+-   [parakeet-rs/libparakeet](https://github.com/parakeet-rs/libparakeet)
 
-**本项目不会内置任何解密所需的密钥。你需要自行寻找解密所需密钥或加密参数，在调用时作为参数传入。**
+**本项目没有所谓的“默认密钥”或“内置密钥”，打开/保存任何类型的加密文件都需要你提供对应的密钥。你需要自行寻找解密所需密钥或加密参数，在调用时作为参数传入。**
 
-你可以在内容提供商的应用程序中查找这些必需参数，或寻求同类项目以及他人的帮助。**但请不要在 Issues/讨论区向作者索要所谓“缺失”的“内置密钥”，你的此类想法不会被满足。**
+你可以<u>在内容提供商的应用程序中查找这些必需参数</u>，或<u>寻求同类项目以及他人的帮助</u>，**但请不要在 Issues/讨论区直接向作者索要所谓“缺失”的“内置密钥”。**
 
-**`libtakiyasha` 对输出数据的可用性（是否可以识别、播放等）不做任何保证。**
+**LibTakiyasha 对输出数据的可用性（是否可以识别、播放等）不做任何保证。**
 
 ---
 
 ## 特性
 
--   纯 Python 实现（包括所有依赖关系），无 C/C++ 扩展模块，跨平台可用
--   支持多种加密文件格式的加密和解密
+-   使用纯 Python 代码编写
+    -   **兼容 Python 3.8 及后续版本**，兼容多种 Python 解释器实现（见下文 [#性能测试](#性能测试)）
+    -   易于阅读，方便 Python 爱好者学习
+    -   （包括依赖库）无任何 C/C++ 扩展模块，跨平台性强
 
-## 当前版本：[2.0.1](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.1)
+### 性能测试
 
-此版本为正式版，但仍有不完美之处。如果发现任何 `libtakiyasha` 自身的问题，欢迎[提交 Issue](https://github.com/nukemiko/libtakiyasha/issues)。
+由于 Python 语言自身原因，LibTakiyasha 相较于同类项目，运行速度较慢。因此我们使用不同解释器实现，对常用操作做了一些性能测试：
 
-**`libtakiyasha` 2.x 版本和 1.x 版本之间的接口并不兼容，使用 1.x 版本的应用程序需要进行大量改造，才能使用 2.x 版本。**
+|      操作      | 测试大小 | Python 3.10.9 (CPython) | Python 3.8.12 (Pyston 2.3.5) | Python 3.9.16 (PyPy 7.3.11) |
+| :------------: | :------: | :---------------------: | :--------------------------: | :-------------------------: |
+|    NCM 加密    | 36.8 MiB |         4.159s          |            2.159s            |           1.366s            |
+|    NCM 解密    | 36.8 MiB |         4.393s          |            2.360s            |           1.480s            |
+|   QMCv1 加密   | 36.8 MiB |         3.841s          |            2.116s            |           1.594s            |
+|   QMCv1 解密   | 36.8 MiB |         3.813s          |            2.331s            |           1.406s            |
+| QMCv2 掩码加密 | 36.8 MiB |         4.065s          |            2.201s            |           1.727s            |
+| QMCv2 掩码解密 | 36.8 MiB |         3.990s          |            2.200s            |           1.848s            |
+| QMCv2 RC4 加密 | 36.8 MiB |         12.820s         |            5.596s            |           2.717s            |
+| QMCv2 RC4 解密 | 36.8 MiB |         12.588s         |            5.913s            |           2.552s            |
+|    KGM 解密    | 64.4 MiB |         49.014s         |           22.053s            |           8.376s            |
+|    VPR 解密    | 87.9 MiB |         70.030s         |           32.252s            |           11.902s           |
 
-另外，`libtakiyasha` 3.x 版本正在开发，有兴趣者可以切换分支查看。
+仅在你对速度有要求时，可以考虑在调用 LibTakiyasha 时使用 PyPy/Pyston 解释器。
 
-### 支持的格式
+一般情况下，建议使用官方解释器实现（CPython）。
 
-请在[此处](https://github.com/nukemiko/libtakiyasha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%A0%BC%E5%BC%8F%E5%92%8C%E6%89%80%E9%9C%80%E5%AF%86%E9%92%A5%E5%8F%82%E6%95%B0)查看。
+## 安装
 
-### 兼容性
+可用的最新版本：2.1.0rc1，可前往[发布页面](https://github.com/nukemiko/libtakiyasha/releases/tag/2.1.0rc1)或 [PyPI](https://pypi.org/project/libtakiyasha/2.1.0rc1/) 下载。
 
-到目前为止（版本 2.0.1），`libtakiyasha` 已在以下 Python 实现中通过了测试：
+如果你要下载其他版本：
 
--   [CPython（官方实现）](https://www.python.org) 3.8 至 3.10，可能支持 3.11
--   [Pyston](https://github.com/pyston/pyston) [2.3.5](https://github.com/pyston/pyston/releases/tag/pyston_2.3.5)（基于 CPython 3.8.12），其他版本或许也可用
--   [PyPy](https://www.pypy.org/) 7.3.9（[CPython 3.8 兼容版本、CPython 3.9 兼容版本](https://downloads.python.org/pypy/)）
+-   PyPI：https://pypi.org/project/libtakiyasha/#history ，挑选自己所需的版本，下载安装包，手动安装。
+    -   或者使用 pip 安装：`python -m pip install -U libtakiyasha==<你所需的版本>`
+-   前往[发布页面](https://github.com/nukemiko/libtakiyasha/releases)挑选自己所需的版本，下载安装包，手动安装。
 
-**注意：`libtakiyasha` 所需的最低 Python 版本为 3.8，因为它使用的很多 Python 特性从 Python 3.8 开始才出现，这意味着使用更低的 Python 版本会出现大量不可预知的错误。**
+### 依赖项
 
-提示：在作者运行的测试中，CPython 实现是速度最慢的；PyPy 比 Pyston 快了大约两倍，比 CPython 快了接近五倍。
+LibTakiyasha 依赖以下包，均可从 PyPI 获取：
 
-### 安装
+-   [pyaes](https://pypi.org/project/pyaes/)
+-   [mutagen](https://pypi.org/project/mutagen/)
 
--   运行命令：`pip install -U libtakiyasha==2.0.1`
--   或者前往 [GitHub 发布页](https://github.com/nukemiko/libtakiyasha/releases/tag/2.0.1) 下载安装
+## 常见问题
 
-#### 所需依赖关系
+> 为什么 2.x 打开文件需要密钥，而 1.x 版本不需要？
 
--   `pyaes` - AES 加解密支持
--   `setuptools` - 安装依赖
+这是出于以下考虑：
 
-如果你是通过[上文提到的方式](#安装)安装的 `libtakiyasha`，这些依赖会被自动安装。
+-   LibTakiyasha 是一个加解密库，当然需要为用户提供自定义密钥的权利
+-   为了保护本项目不受美国<ruby>数字千年版权法<rt>Digital Millennium Copyright Act</rt></ruby>（DMCA）影响，避免仓库被误杀
+    -   因此，本仓库所有 1.x 及更早版本的提交和发布版本都已删除。
 
-### 基本使用方法
+> 如何使用？
 
-提取加密文件里的音频内容：
-
-```python
-from libtakiyasha.ncm import NCM
-from libtakiyasha.qmc import QMCv2
-
-...  # 定义你提供的核心密钥 your_core_key、your_simple_key、your_mix_key1 和 your_mix_key2
-
-# 打开 NCM 文件
-ncmfile = NCM.from_file('source.ncm', core_key=your_core_key)
-target_file_format = ncm.ncm_tag.format
-
-with open('target_from_ncm.' + target_file_format, mode='wb') as fd:
-    # libtakiyasha 的所有透明加密文件对象（NCM、QMCv1、QMCv2、KGMorVPR、KWM 等）默认以固定大小的块（io.DEFAULT_BUFFER_SIZE）为单位进行迭代
-    # 通过修改对象的 iter_mode 属性为 'line'，可以使其以一行为单位进行迭代
-    # 不过按行迭代会导致性能大幅下降，不推荐使用
-    for block in ncmfile:
-        fd.write(block)
-
-# 打开 QMCv2 文件
-qmcv2file = QMCv2.from_file('source.mflac', simple_key=your_simple_key)
-target_file_format = 'flac'
-
-with open('target_from_mflac.' + target_file_format, mode='wb') as fd:
-    for block in qmcv2file:
-        fd.write(block)
-
-# 也可以打开来自 QQ 音乐 PC 客户端 18.57 及更新版本的 QMCv2 文件，
-# 但需要正确的 mix_key1 和 mix_key2 参数
-qmcv2file_keyencv2 = QMCv2.from_file('source.mflac', simple_key=your_simple_key, mix_key1=your_mix_key1, mix_key2=your_mix_key2)
-target_file_format = 'flac'
-
-with open('target_from_mflac.' + target_file_format, mode='wb') as fd:
-    for block in qmcv2file_keyencv2:
-        fd.write(block)
-```
-
--   打开加密文件时，如果不提供核心密钥，会报错而无法继续：
-
-    ```pycon
-
-    >>> from libtakiyasha import QMCv2
-    >>> qmcv2file = QMCv2.from_file('source.mflac')
-    Traceback (most recent call last):
-        File "<stdin>", line 1, in <module>
-        <...>
-        ValueError: 'simple_key' is required for QMCv2 file master key decryption
-    >>>
-    ```
-
-    你需要向 `QMCv2.from_file()` 传入正确的 `simple_key` 参数才能打开文件。
-
-    同样，你需要向 `NCM.from_file()` 传入正确的 `core_key` 参数才能打开 NCM 文件。
-
-生成加密文件（以 QMCv2 为例）：
-
-```python
-from libtakiyasha.qmc import QMCv2
-
-...  # 定义你的 your_simple_key、your_mix_key1 和 your_mix_key2
-
-new_qmcv2 = QMCv2.new()
-
-new_qmcv2.simple_key = your_simple_key  # 可选，但如果跳过此步骤，在保存到文件时需要填写参数 simple_key
-
-with open('plain.flac', 'rb') as fd:
-    for line in fd:
-        new_qmcv2.write(line)
-
-# 保存为 QMCv2 KeyEncV1
-new_qmcv2.to_file('encrypted.mflac')
-
-# 也可以保存为 QMCv2 KeyEncV2 - QQ 音乐 PC 端 18.57 及更高版本的格式
-new_qmcv2.to_file('encrypted-keyencv2.mflac', master_key_enc_ver=2, mix_key1=your_mix_key1, mix_key2=your_mix_key2)
-```
+LibTakiyasha 的文档（DocStrings）写得非常清晰，你可以在导入后，使用 Python 内置函数 `help(<...>)` 查看用法。

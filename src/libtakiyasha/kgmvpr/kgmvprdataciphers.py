@@ -1,23 +1,28 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Generator, TypedDict
+from hashlib import md5
+from typing import Generator, Literal
 
-from .kgmvprmaskutils import make_maskstream, xor_half_lower_byte
-from ..common import StreamCipherSkel
+from ..prototypes import KeyStreamBasedStreamCipherSkel
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytes, toint_nofloat
+from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
-__all__ = ['KGMorVPRTables', 'KGMorVPREncryptAlgorithm']
-
-
-class KGMorVPRTables(TypedDict):
-    table1: bytes
-    table2: bytes
-    tablev2: bytes
+__all__ = ['KGMCryptoLegacy']
 
 
-class KGMorVPREncryptAlgorithm(StreamCipherSkel):
+def kugou_md5sum(data: bytes, /) -> bytes:
+    md5sum = md5(data)
+    md5digest = md5sum.digest()
+    ret = bytearray(md5sum.digest_size)
+    for i in range(0, md5sum.digest_size, 2):
+        ret[i] = md5digest[14 - i]
+        ret[i + 1] = md5digest[14 + 1 - i]
+
+    return bytes(ret)
+
+
+class KGMCryptoLegacy(KeyStreamBasedStreamCipherSkel):
     @CachedClassInstanceProperty
     def keysize(self) -> int:
         return 17
@@ -26,46 +31,34 @@ class KGMorVPREncryptAlgorithm(StreamCipherSkel):
     def tablesize(self) -> int:
         return 17 * 16
 
-    @property
-    def master_key(self) -> bytes:
-        return self._master_key
-
-    @property
-    def vpr_key(self) -> bytes | None:
-        return self._vpr_key
-
-    @property
-    def tables(self) -> KGMorVPRTables:
-        return {
-            'table1' : self._table1,
-            'table2' : self._table2,
-            'tablev2': self._tablev2
-        }
-
     def __init__(self,
                  table1: BytesLike,
                  table2: BytesLike,
                  tablev2: BytesLike,
-                 master_key: BytesLike, /,
+                 core_key_test_data: BytesLike, /,
                  vpr_key: BytesLike = None,
                  ) -> None:
         self._table1 = tobytes(table1)
         self._table2 = tobytes(table2)
         self._tablev2 = tobytes(tablev2)
 
-        for valname, val in [('table1', self._table1),
-                             ('table2', self._table2),
-                             ('tablev2', self._tablev2)]:
+        for idx, valname_val in enumerate([('table1', self._table1),
+                                           ('table2', self._table2),
+                                           ('tablev2', self._tablev2)],
+                                          start=1
+                                          ):
+            valname, val = valname_val
             if len(val) != self.tablesize:
                 raise ValueError(
-                    f"invalid length of argument '{valname}': should be {self.tablesize}, not {len(val)}"
+                    f"invalid length of position {idx} argument '{valname}': "
+                    f"should be {self.tablesize}, not {len(val)}"
                 )
 
-        self._master_key = tobytes(master_key)
-        if len(self._master_key) != self.keysize:
+        self._core_key_test_data = tobytes(core_key_test_data)
+        if len(self._core_key_test_data) != self.keysize:
             raise ValueError(
-                f"invalid length of argument 'master_key': "
-                f"should be {self.keysize}, not {len(self._master_key)}"
+                f"invalid length of fourth argument 'core_key_test_data': "
+                f"should be {self.keysize}, not {len(self._core_key_test_data)}"
             )
         if vpr_key is None:
             self._vpr_key = None
@@ -77,51 +70,89 @@ class KGMorVPREncryptAlgorithm(StreamCipherSkel):
                     f"should be {self.keysize}, not {len(self._vpr_key)}"
                 )
 
-    def keystream(self, offset: IntegerLike, length: IntegerLike, /) -> Generator[int, None, None]:
-        raise NotImplementedError
+    def getkey(self, keyname: str = 'master') -> bytes | None:
+        if keyname == 'master':
+            return self._core_key_test_data
+        elif keyname == 'table1':
+            return self._table1
+        elif keyname == 'table2':
+            return self._table2
+        elif keyname == 'tablev2':
+            return self._tablev2
+        elif keyname == 'vprkey':
+            return self._vpr_key
 
-    def encrypt(self, plaindata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        master_key = self._master_key
-        vpr_key: bytes | None = self._vpr_key
+    def prexor_encrypt(self, data: BytesLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        offset = toint(offset)
+        vpr_key = self._vpr_key
         keysize = self.keysize
-
-        offset = toint_nofloat(offset)
-        if offset < 0:
-            ValueError("second argument 'offset' must be a non-negative integer")
-        plaindata = tobytes(plaindata)
-        cipherdata_buf = bytearray(len(plaindata))
-
-        maskstream_iterator = make_maskstream(
-            offset, len(plaindata), self._table1, self._table2, self._tablev2
-        )
-        for idx, peered_byte in enumerate(zip(plaindata, maskstream_iterator)):
-            pdb, msb = peered_byte
+        for idx, byte in enumerate(data, start=offset):
             if vpr_key is not None:
-                pdb ^= vpr_key[(idx + offset) % keysize]
-            cdb = xor_half_lower_byte(pdb) ^ msb ^ master_key[(idx + offset) % keysize]
-            cipherdata_buf[idx] = cdb
+                byte ^= vpr_key[idx % keysize]
+            yield byte ^ ((byte % 16) << 4)
 
-        return tobytes(cipherdata_buf)
+    @staticmethod
+    def prexor_decrypt(data: BytesLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        offset = toint(offset)
+        for idx, byte in enumerate(data, start=offset):
+            yield byte ^ ((byte % 16) << 4)
 
-    def decrypt(self, cipherdata: BytesLike, offset: IntegerLike = 0, /) -> bytes:
-        master_key = self._master_key
-        vpr_key: bytes | None = self._vpr_key
+    def postxor_decrypt(self, data: BytesLike, offset: IntegerLike, /) -> Generator[int, None, None]:
+        offset = toint(offset)
+        vpr_key = self._vpr_key
         keysize = self.keysize
+        for idx, byte in enumerate(data, start=offset):
+            if vpr_key is None:
+                yield byte
+            else:
+                yield byte ^ vpr_key[idx % keysize]
 
-        offset = toint_nofloat(offset)
+    def genmask(self,
+                nbytes: IntegerLike,
+                offset: IntegerLike, /
+                ) -> Generator[int, None, None]:
+        nbytes = toint(nbytes)
+        offset = toint(offset)
         if offset < 0:
-            ValueError("second argument 'offset' must be a non-negative integer")
-        cipherdata = tobytes(cipherdata)
-        plaindata_buf = bytearray(len(cipherdata))
+            raise ValueError("second argument 'offset' must be a non-negative integer")
+        if nbytes < 0:
+            raise ValueError("first argument 'nbytes' must be a non-negative integer")
 
-        maskstream_iterator = make_maskstream(
-            offset, len(cipherdata), self._table1, self._table2, self._tablev2
-        )
-        for idx, peered_byte in enumerate(zip(cipherdata, maskstream_iterator)):
-            cdb, msb = peered_byte
-            pdb = xor_half_lower_byte(cdb ^ msb ^ master_key[(idx + offset) % keysize])
-            if vpr_key is not None:
-                pdb ^= vpr_key[(idx + offset) % keysize]
-            plaindata_buf[idx] = pdb
+        tablesize: int = self.tablesize
+        table1 = self._table1
+        table2 = self._table2
+        tablev2 = self._tablev2
+        for idx in range(offset, offset + nbytes):
+            idx_urs4 = idx >> 4
+            value = 0
+            while idx_urs4 >= 17:
+                value ^= table1[idx_urs4 % tablesize]
+                idx_urs4 >>= 4
+                value ^= table2[idx_urs4 % tablesize]
+                idx_urs4 >>= 4
+            yield value ^ tablev2[idx % tablesize]
 
-        return tobytes(plaindata_buf)
+    def keystream(self,
+                  operation: Literal['encrypt', 'decrypt'],
+                  nbytes: IntegerLike,
+                  offset: IntegerLike, /
+                  ) -> Generator[int, None, None]:
+        ck_test_data = self._core_key_test_data
+        keysize: int = self.keysize
+
+        mask_strm = self.genmask(nbytes, offset)
+        if operation == 'encrypt':
+            for idx, msb in enumerate(mask_strm, start=offset):
+                yield msb ^ ck_test_data[idx % keysize]
+        elif operation == 'decrypt':
+            for idx, msb in enumerate(mask_strm, start=offset):
+                msb ^= ck_test_data[idx % keysize]
+                yield msb ^ ((msb % 16) << 4)
+        elif isinstance(operation, str):
+            raise ValueError(
+                f"first argument 'operation' must be 'encrypt' or 'decrypt', not {operation}"
+            )
+        else:
+            raise TypeError(
+                f"first argument 'operation' must be str, not {type(operation).__name__}"
+            )
