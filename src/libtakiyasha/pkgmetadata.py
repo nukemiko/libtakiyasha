@@ -8,23 +8,6 @@ from typing import Literal, NamedTuple
 
 __all__ = ['version', 'version_info', 'progname']
 
-
-class _VersionInfo(NamedTuple):
-    major: int
-    minor: int = None
-    micro: int = None
-    epoch: int | None = None
-    is_pre: bool = False
-    pre_type: Literal['alpha', 'beta', 'rc'] | None = None
-    pre_num: int | None = None
-    is_post: bool = False
-    post_num1: int | None = None
-    post_num2: int | None = None
-    is_dev: bool = False
-    dev_num: int | None = None
-    local_identifier: str | None = None
-
-
 _VERSION_PATTERN_STR = r"""
     v?
     (?:
@@ -58,10 +41,44 @@ _VERSION_PATTERN_STR = r"""
 _VERSION_PATTERN = re.compile(r"^\s*" + _VERSION_PATTERN_STR + r"\s*$", re.VERBOSE | re.IGNORECASE)
 
 
+class _VersionInfo(NamedTuple):
+    major: int
+    minor: int = None
+    micro: int = None
+    epoch: int | None = None
+    is_pre: bool = False
+    pre_type: Literal['alpha', 'beta', 'rc'] | None = None
+    pre_num: int | None = None
+    is_post: bool = False
+    post_num1: int | None = None
+    post_num2: int | None = None
+    is_dev: bool = False
+    dev_num: int | None = None
+    local_identifier: str | None = None
+
+
+@lru_cache
+def progname() -> str:
+    ret = __name__.split('.')[0]
+    if ret == '__main__':
+        for parentpath in Path(__file__).parents:
+            if (parentpath / '__init__.py').exists():
+                if (parentpath / '__main__.py').exists():
+                    if (parentpath / 'VERSION').exists():
+                        return parentpath.name
+        raise RuntimeError('cannot get the program name')
+    return ret
+
+
 @lru_cache
 def version() -> str:
-    with open(Path(__file__).parent / 'VERSION', encoding='utf-8') as version_file:
-        return version_file.readline().strip()
+    for parentpath in Path(__file__).parents:
+        if parentpath.name == progname():
+            if (parentpath / '__init__.py').exists():
+                if (parentpath / 'VERSION').exists():
+                    with open(parentpath / 'VERSION', encoding='utf-8') as version_file:
+                        return version_file.readline().strip()
+    raise RuntimeError('cannot get the version')
 
 
 @lru_cache
@@ -111,14 +128,3 @@ def version_info() -> _VersionInfo:
             break
 
     return _VersionInfo(**params)
-
-
-def progname() -> str:
-    last_parent_path: Path | None = None
-    for parent in Path(__file__).parents:
-        if last_parent_path is not None:
-            if (last_parent_path / '__init__.py').exists() and (last_parent_path / 'VERSION').exists():
-                return last_parent_path.name
-        last_parent_path = parent
-    else:
-        raise RuntimeError('cannot get the program name')
