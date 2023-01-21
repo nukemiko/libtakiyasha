@@ -219,6 +219,8 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
                   nbytes: IntegerLike,
                   offset: IntegerLike, /
                   ) -> Generator[int, None, None]:
+        common_segment_size: int = self.common_segment_size
+
         pending = toint(nbytes)
         done = 0
         offset = toint(offset)
@@ -227,30 +229,29 @@ class HardenedRC4(KeyStreamBasedStreamCipherSkel):
         if pending < 0:
             raise ValueError("second argument 'nbytes' must be a non-negative integer")
 
-        def mark(p: int) -> None:
-            nonlocal pending, done, offset
-
-            pending -= p
-            done += p
-            offset += p
-
         if 0 <= offset < self.first_segment_size:
             blksize = min(pending, self.first_segment_size - offset)
             yield from self._yield_first_segment_keystream(blksize, offset)
-            mark(blksize)
+            pending -= blksize
+            done += blksize
+            offset += blksize
             if pending <= 0:
                 return
 
-        if offset % self.common_segment_size != 0:
-            blksize = min(pending, self.common_segment_size - (offset % self.common_segment_size))
+        if offset % common_segment_size != 0:
+            blksize = min(pending, common_segment_size - (offset % common_segment_size))
             yield from self._yield_common_segment_keystream(blksize, offset)
-            mark(blksize)
+            pending -= blksize
+            done += blksize
+            offset += blksize
             if pending <= 0:
                 return
 
-        while pending > self.common_segment_size:
-            yield from self._yield_common_segment_keystream(self.common_segment_size, offset)
-            mark(self.common_segment_size)
+        while pending > common_segment_size:
+            yield from self._yield_common_segment_keystream(common_segment_size, offset)
+            pending -= common_segment_size
+            done += common_segment_size
+            offset += common_segment_size
 
         if pending > 0:
             yield from self._yield_common_segment_keystream(nbytes - done, offset)
