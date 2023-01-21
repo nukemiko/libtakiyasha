@@ -337,8 +337,11 @@ class NCMFileInfo(NamedTuple):
 def probe_ncm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 NCM 文件。
 
-    返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
-    ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；否则为 ``None``。
+    返回一个 2 个元素长度的元组：
+
+    - 第一个元素为 ``filething``
+    - 如果 ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；
+    - 否则为 ``None``。
 
     本方法的返回值可以用于 ``NCM.open()`` 的第一个位置参数。
 
@@ -424,11 +427,22 @@ class NCM(EncryptedBytesIOSkel):
     <libtakiyasha.ncm.NCM at 0x7f26c4f4a390, cipher <libtakiyasha.stdciphers.ARC4 object at 0x7f26c51214b0>>
     >>>
 
+    - 获取使用的主密钥：
+    >>> ncmfile.master_key  # 此处的密钥是随机生成的
+    b'60564957557881842441053098814sAwKPjVq2gK9JXW0nV7BF3iQXh0J1ra34dh9UqfiMCUUzOrcyKERif9IfdFf5toJk6rO8TZaVSYkQVtZClVY'
+    >>>
+
+    - 访问内部的 Cipher 对象：
+    >>> ncmfile.cipher
+    <libtakiyasha.stdciphers.ARC4 object at 0x7f26c51214b0>
+    >>>
+
     - 打开一个外部 NCM 文件：
     >>> ncmfile = NCM.open('/path/to/ncmfile.ncm', core_key=b'YourNCMCoreKey', tag_key=b'YourNCMTagKey')
     >>> ncmfile
     <libtakiyasha.ncm.NCM at 0x7f26c44e5080, cipher <libtakiyasha.stdciphers.ARC4 object at 0x7f26c4ef1270>, source '/path/to/ncmfile.ncm'>
     >>>
+    更多使用方法，请使用 ``help(NCM.open)`` 查看帮助。
 
     - 读取和写入，注意写入操作产生的修改需要调用 ``save()`` 方法显式保存：
     >>> ncmfile.read(16)
@@ -442,6 +456,8 @@ class NCM(EncryptedBytesIOSkel):
     - 保存上述操作产生的更改
     >>> # 如果该 NCM 对象不是从文件打开的，还需要 filething 参数
     >>> ncmfile.save(core_key=b'YourNCMCoreKey', tag_key=b'YourNCMTagKey')
+    >>>
+    更多使用方法，请使用 ``help(NCM.save)`` 查看帮助。
 
     - 获取歌曲标签和封面信息，详见 ``CloudMusicIdentifier``：
     >>> ncmfile.ncm_tag
