@@ -6,14 +6,14 @@ LibTakiyasha 是一个 Python 音频加密/解密工具库（当然也可用于�
 
 **本项目是以学习和技术研究的初衷创建的，修改、再分发时请遵循 [License](LICENSE)。**
 
-本项目的设计灵感，以及部分解密方案，来源于：
+本项目的设计灵感，以及部分解密方案，来源于同类项目：
 
 -   [Unlock Music Project - CLI Edition](https://git.unlock-music.dev/um/cli)
 -   [parakeet-rs/libparakeet](https://github.com/parakeet-rs/libparakeet)
 
-**本项目没有所谓的“默认密钥”或“内置密钥”，打开/保存任何类型的加密文件都需要你提供对应的密钥。你需要自行寻找解密所需密钥或加密参数，在调用时作为参数传入。**
+**本项目不内置任何密钥，要正常打开/保存任何类型的加密文件，你需要提供正确的对应的密钥。你需要自行寻找解密所需密钥或加密参数，在调用时作为参数传入。**
 
-你可以<u>在内容提供商的应用程序中查找这些必需参数</u>，或<u>寻求同类项目以及他人的帮助</u>，**但请不要在 Issues/讨论区直接向作者索要所谓“缺失”的“内置密钥”。**
+如果你要解密别人提供的文件，你可以从提供者处索要密钥，或者寻求同类项目和他人的帮助。
 
 **LibTakiyasha 对输出数据的可用性（是否可以识别、播放等）不做任何保证。**
 
@@ -76,4 +76,75 @@ LibTakiyasha 依赖以下包，均可从 PyPI 获取：
 
 > 如何使用？
 
-LibTakiyasha 的文档（DocStrings）写得非常清晰，你可以在导入后，使用 Python 内置函数 `help(<...>)` 查看用法。
+当你 `import libtakiyasha` 时，`libtakiyasha` 下有四个子模块 `ncm`、`qmc`、`kgmvpr`、`kwm` 会被自动导入。这些子模块下各有一个加密文件对象类（`qmc` 除外，有两个），和一个 `probe` 开头的探测函数（`qmc` 除外，有三个），用于确认目标文件是否被该模块支持：
+
+|         模块          |   加密文件对象类   |                     探测函数                      |
+| :-------------------: | :----------------: | :-----------------------------------------------: |
+|  `libtakiyasha.ncm`   |       `NCM`        |                   `probe_ncm()`                   |
+|  `libtakiyasha.qmc`   | `QMCv1` 和 `QMCv2` | `probe_qmc()`、`probe_qmcv1()` 和 `probe_qmcv2()` |
+| `libtakiyasha.kgmvpr` |     `KGMorVPR`     |                 `probe_kgmvpr()`                  |
+|  `libtakiyasha.kwm`   |       `KWM`        |                   `probe_kwm()`                   |
+
+每个探测函数都会返回一个内含两个元素的元组：
+
+-   第一个元素为文件路径或文件对象，取决于探测函数收到的参数；
+-   在探测到受支持的文件时，第二个元素为文件的信息，否则为 `None`
+
+每一个加密文件对象都可以按照普通文件对象对待（拥有 `read()`、`write()`、`seek()` 等方法），也拥有一个 `save()` 方法，以便将该加密文件对象保存到文件。
+
+以 `libtakiyasha.ncm.NCM` 为例，以下是简单的使用示例：
+
+-   要想打开外部加密文件，或新建空加密文件，使用对应加密文件对象类的构造器方法 `open()` 或 `new()`：
+
+    ```pycon
+    >>> # 打开外部加密文件
+    >>> ncmfile_from_open = libtakiyasha.ncm.NCM.open('/path/to/ncmmfile.ncm', core_key=..., tag_key=...)
+    >>> ncmfile_from_open
+    <libtakiyasha.ncm.NCM at 0x7f26c44e5080, cipher <libtakiyasha.stdciphers.ARC4 object at 0x7f26c4ef1270>, source '/path/to/ncmfile.ncm'>
+    >>> # 新建空加密文件对象
+    >>> ncmfile_new = libtakiyasha.ncm.NCM.new()
+    >>> ncmfile_new
+    <libtakiyasha.stdciphers.ARC4 object at 0x7f26c51214b0>
+    >>>
+    ```
+
+-   从加密文件中读取和写入数据：
+
+    ```pycon
+    >>> # 读取 16 字节
+    >>> ncmfile_from_open.read(16)
+    b'fLaC\\x00\\x00\\x00"\\x12\\x00\\x12\\x00\\x00\\x07)\\x00'
+    >>> # 读取一行数据，直到下一个换行符 \n
+    >>> ncmfile_from_open.readline()
+    b'\xc4B\xf0\x00\xb6\xe14A\x86nz.\x97\xa8\xe3\xbe\x1d\xb7\xb02?u&\x03\x00\t\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x12\x00\x00\x00\x00\x00\x00\x01V\x00\x00\x00\x00\x00\x00\x01\xd6`\x12\x00\x00\x00\x00\x00\x00\x02\xac\x00\x00\x00\x00\x00\x00\x04\x92B\x12\x00\x00\x00\x00\x00\x00\x04\x02\x00\x00\x00\x00\x00\x00\x07\x0f\xb2\x12\x00\x00\x00\x00\x00\x00\x05X\x00\x00\x00\x00\x00\x00\t\xd4\x8c\x12\x00\x00\x00\x00\x00\x00\x06\xae\x00\x00\x00\x00\x00\x00\x0c\xa3\xb6\x12\x00\x00\x00\x00\x00\x00\x08\x04\x00\x00\x00\x00\x00\x00\x0f|\x90\x12\x00\x00\x00\x00\x00\x00\tZ\x00\x00\x00\x00\x00\x00\x12^T\x12\x00\x00\x00\x00\x00\x00\n'
+    >>>
+    >>> # 使用 for 循环按照固定大小迭代加密文件对象
+    >>> ncmfile_from_open.seek(0, 0)
+    0
+    >>> for blk in ncmfile_from_open:
+    ...     print(len(blk))
+    ...
+    8192
+    8192
+    8192
+    8192
+    8192
+    8192
+    [...]
+    >>> # 向加密文件对象写入数据
+    >>> ncmfile_from_open.seek(0, 2)
+    36137109
+    >>> ncmfile_from_open.write(b'Now I writing something...')
+    26
+    >>>
+    ```
+
+-   保存加密文件对象到文件：
+
+    ```pycon
+    >>> # 如果该 NCM 对象不是从文件打开的，还需要 filething 参数
+    >>> ncmfile_from_open.save(core_key=..., tag_key=...)
+    >>>
+    ```
+
+有关每个加密文件的操作示例，请使用 `help()` 查看对应加密文件对象类的文档。
