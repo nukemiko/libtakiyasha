@@ -37,12 +37,18 @@ QMCV1_SUFFIX_PATTERN = re.compile('\\.qmc[a-zA-Z0-9]{1,4}$', flags=re.IGNORECASE
 
 @dataclass
 class QMCv2QTag:
-    """解析、存储和重建 QMCv2 文件末尾的 QTag 数据。不包括主密钥。"""
+    """解析、存储和生成 QMCv2 文件末尾的 QTag 数据（不包括主密钥）。
+
+    可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
+    """
     song_id: int = 0
+    """此歌曲在 QQ 音乐的 ID。"""
     unknown: int = 2
+    """含义未知，在已知所有样本中都为 2。"""
 
     @classmethod
     def load(cls, qtag_serialized: BytesLike, /):
+        """解析一段 QTag 数据，返回加密后的主密钥和一个 QMCv2QTag 对象。"""
         qtag_serialized = tobytes(qtag_serialized)
         qtag_serialized_splitted = qtag_serialized.split(b',')
         if len(qtag_serialized_splitted) != 3:
@@ -56,6 +62,7 @@ class QMCv2QTag:
         return master_key_encrypted_b64encoded, cls(song_id=song_id, unknown=unknown)
 
     def dump(self, master_key_encrypted_b64encoded: BytesLike, /) -> bytes:
+        """根据当前 QMCv2QTag 对象生成并返回一段 QTag 数据，需要已加密的主密钥。"""
         return b','.join(
             [
                 tobytes(master_key_encrypted_b64encoded),
@@ -69,11 +76,15 @@ class QMCv2QTag:
 class QMCv2STag:
     """解析、存储和重建 QMCv2 文件末尾的 STag 数据。"""
     song_id: int = 0
+    """此歌曲在 QQ 音乐的 ID。"""
     unknown: int = 2
+    """含义未知，在已知所有样本中都为 2。"""
     song_mid: str = '0' * 14
+    """此歌曲在 QQ 音乐的媒体 ID（MId）。"""
 
     @classmethod
     def load(cls, stag_serialized: BytesLike, /):
+        """解析一段 STag 数据，返回一个 QMCv2STag 对象。"""
         stag_serialized = tobytes(stag_serialized)
         stag_serialized_splitted = stag_serialized.split(b',')
         if len(stag_serialized_splitted) != 3:
@@ -87,6 +98,10 @@ class QMCv2STag:
         return cls(song_id=song_id, unknown=unknown, song_mid=song_mid)
 
     def dump(self) -> bytes:
+        """根据当前 QMCv2STag 对象生成并返回一段 STag 数据。
+
+        可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
+        """
         return b','.join(
             [
                 str(self.song_id).encode('ascii'),
@@ -314,6 +329,44 @@ class QMCv1(EncryptedBytesIOSkel):
     如果你要新建一个 QMCv1 对象，不要直接调用 ``__init__()``，而是使用构造器方法
     ``QMCv1.new()`` 和 ``QMCv1.open()`` 新建或打开已有 QMCv1 文件，
     使用已有 QMCv1 对象的 ``save()`` 方法将其保存到文件。
+
+    使用示例：
+
+    - 新建一个 QMCv1 对象以便编辑：
+    >>> qmcv1file = QMCv1.new()  # 添加 mask 参数以便自定义密钥，否则使用随机生成的密钥
+    >>> qmcv1file
+    <libtakiyasha.qmc.QMCv1 at 0x7ff6820d9e90, cipher <libtakiyasha.qmc.qmcdataciphers.Mask128 object at 0x7ff682178c10>>
+    >>>
+
+    - 获取使用的主密钥：
+    >>> qmcv1file.master_key  # 此处的密钥是随机生成的
+    b'}t4\\x87-\\xcd\\x88\\x93Ro\\x12g1Q\\xc4O\\xb3...'
+    >>>
+
+    - 访问内部的 Cipher 对象：
+    >>> qmcv1file.cipher
+    <libtakiyasha.qmc.qmcdataciphers.Mask128 object at 0x7ff682178c10>
+    >>>
+
+    - 打开一个外部 QMCv1 文件：
+    >>> qmcv1file = QMCv1.open('/path/to/qmcv1file.qmcflac', mask=b'YourQMCv1Mask...')
+    >>> qmcv1file
+    <libtakiyasha.qmc.QMCv1 at 0x7ff6820d9e90, cipher <libtakiyasha.qmc.qmcdataciphers.Mask128 object at 0x7ff682178c10>, source '/path/to/qmcv1file.qmcflac'>
+    >>>
+
+    - 读取和写入，注意写入操作产生的修改需要调用 ``save()`` 方法显式保存：
+    >>> qmcv1file.read(16)
+    b'fLaC\\x00\\x00\\x00"\\x12\\x00\\x12\\x00\\x00\\x07)\\x00'
+    >>> qmcv1file.seek(0, 2)
+    36137109
+    >>> qmcv1file.write(b'\\x00Writing something')
+    18
+    >>>
+
+    - 保存上述操作产生的更改
+    >>> # 如果该 QMCv1 对象不是从文件打开的，还需要 filething 参数
+    >>> qmcv1file.save()
+    >>>
     """
 
     @property
@@ -500,6 +553,55 @@ class QMCv2(EncryptedBytesIOSkel):
     如果你要新建一个 QMCv2 对象，不要直接调用 ``__init__()``，而是使用构造器方法
     ``QMCv2.new()`` 和 ``QMCv2.open()`` 新建或打开已有 QMCv2 文件，
     使用已有 QMCv2 对象的 ``save()`` 方法将其保存到文件。
+
+        使用示例：
+
+    - 新建一个 QMCv2 对象以便编辑：
+    >>> qmcv2file = QMCv2.new('mask')  # 必须选择使用的加密方式，可用值：'map'、'mask'、'rc4'
+    >>> qmcv2file
+    <libtakiyasha.qmc.QMCv2 at 0x7ff6820d9e90, cipher <libtakiyasha.qmc.qmcdataciphers.Mask128 object at 0x7ff682178c10>>
+    >>>
+
+    - 获取使用的主密钥：
+    >>> qmcv2file.master_key  # 此处的密钥是随机生成的
+    b'pdjx6epLTXuayfUKEWjxxcEWcWqybsMTTauxG7cIo5qsXH8...'
+    >>>
+
+    - 访问内部的 Cipher 对象：
+    >>> qmcv2file.cipher
+    <libtakiyasha.qmc.qmcdataciphers.Mask128 object at 0x7ff682178c10>
+    >>>
+
+    - 打开一个外部 QMCv2 文件：
+    >>> qmcv2file = QMCv2.open('/path/to/qmcv2file-hardenedrc4.mflac0', core_key=b'YourQMCv2CoreKey')
+    >>> qmcv2file
+    <libtakiyasha.qmc.QMCv2 at 0x7ff672679e90, cipher <libtakiyasha.qmc.qmcdataciphers.HardenedRC4 object at 0x7ff6811ff6a0>, source '/path/to/qmcv2file-hardenedrc4.mflac0'>
+    >>>
+    根据文件使用的加密方式，你可能需要输入多个密钥。更多使用方法，请使用 ``help(QMCv2.open)`` 查看帮助。
+
+    - 读取和写入，注意写入操作产生的修改需要调用 ``save()`` 方法显式保存：
+    >>> qmcv2file.read(16)
+    b'fLaC\\x00\\x00\\x00"\\x12\\x00\\x12\\x00\\x00\\x07)\\x00'
+    >>> qmcv2file.seek(0, 2)
+    36137109
+    >>> qmcv2file.write(b'\\x00Writing something')
+    18
+    >>>
+
+    - 保存上述操作产生的更改
+    >>> # 如果该 QMCv2 对象不是从文件打开的，还需要 filething 参数
+    >>> qmcv2file.save(core_key=b'YourQMCv2CoreKey')
+    >>>
+    根据你想要的输出文件加密方式，你可能需要输入多个密钥。更多使用方法，请使用 ``help(QMCv2.save)`` 查看帮助。
+
+    - 访问源文件末尾的附加数据（QTag 或 STag），如果没有，则为 ``None``：
+    >>> qmcv2file.extra_info
+    QMCv2QTag(song_id=0, unknown=2)
+    >>> qmcv2file.extra_info.song_id
+    1145141919810
+    >>> qmcv2file.extra_info.unknown
+    2
+    >>>
     """
 
     @property
