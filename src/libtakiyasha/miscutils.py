@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from functools import wraps
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Callable, IO, Iterable, Mapping, NamedTuple, TypeVar
 
-from .typedefs import BytesLike, KT, T, VT
-from .typeutils import tobytes
+from .typedefs import BytesLike, FilePath, KT, T, VT
+from .typeutils import isfilepath, tobytes, verify_fileobj
 
 __all__ = [
     'BINARIES_ROOTDIR',
     'bytestrxor',
-    'getattribute'
+    'getattribute',
+    'proberfuncfactory'
 ]
 
 BINARIES_ROOTDIR = Path(__file__).parent / 'binaries'
@@ -85,3 +87,40 @@ def bytestrxor(term1: BytesLike, term2: BytesLike, /) -> bytes:
         )
 
     return bytes(b1 ^ b2 for b1, b2 in zip(bytestring1, bytestring2))
+
+
+_FileInfo = TypeVar('_FileInfo', bound=NamedTuple)
+
+
+def proberfuncfactory(docstring_from=None):
+    def prober(
+            operation: Callable[[IO[bytes], ...], _FileInfo | None]
+    ) -> Callable[[FilePath, ...], tuple[FilePath | IO[bytes], _FileInfo | None]]:
+        @wraps(operation)
+        def wrapper(filething: FilePath | IO[bytes], /, **kwargs) -> tuple[FilePath | IO[bytes], _FileInfo | None]:
+            if isfilepath(filething):
+                with open(filething, mode='rb') as fileobj:
+                    return Path(filething), operation(fileobj, **kwargs)
+            else:
+                fileobj = verify_fileobj(filething, 'binary',
+                                         verify_readable=True,
+                                         verify_seekable=True
+                                         )
+                fileobj_origpos = fileobj.tell()
+                prs = operation(fileobj, **kwargs)
+                fileobj.seek(fileobj_origpos, 0)
+
+                return fileobj, prs
+
+        if isinstance(docstring_from, str):
+            wrapper.__doc__ = str(docstring_from)
+        elif docstring_from is not None:
+            docstring = getattr(docstring_from, '__doc__', None)
+            if docstring is not None:
+                wrapper.__doc__ = docstring
+
+        return wrapper
+
+    if callable(docstring_from):
+        return prober(docstring_from)
+    return prober
