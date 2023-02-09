@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from base64 import b64decode, b64encode
 from math import tan
+from typing import Iterable
 
-from ..exceptions import CipherDecryptingError, CipherEncryptingError
 from ..prototypes import CipherSkel
 from ..stdciphers import TarsCppTCTEAWithModeCBC
 from ..typedefs import BytesLike
@@ -79,63 +79,42 @@ class QMCv2KeyEncryptV2(QMCv2KeyEncryptV1):
     def getkey(self, keyname: str = 'master') -> bytes | None:
         if keyname == 'master':
             return self._core_key
-        elif keyname == 'garble1':
-            return self._garble_key1
-        elif keyname == 'garble2':
-            return self._garble_key2
+        elif keyname.startswith('garble'):
+            garble_key_strno = keyname[6:]
+            if garble_key_strno.isdecimal():
+                garble_key_no = int(garble_key_strno)
+                if 1 <= garble_key_no <= len(self._garble_ciphers):
+                    return self._garble_ciphers[garble_key_no - 1].getkey()
 
-    def __init__(self, key: BytesLike, garble_key1: BytesLike, garble_key2: BytesLike, /):
-        self._garble_key1 = tobytes(garble_key1)
-        self._garble_key2 = tobytes(garble_key2)
-
-        self._encrypt_stage1_decrypt_stage2_tea_cipher = TarsCppTCTEAWithModeCBC(self._garble_key2,
-                                                                                 rounds=32
-                                                                                 )
-        self._encrypt_stage2_decrypt_stage1_tea_cipher = TarsCppTCTEAWithModeCBC(self._garble_key1,
-                                                                                 rounds=32
-                                                                                 )
-
+    def __init__(self, key: BytesLike, garble_keys: Iterable[BytesLike], /) -> None:
         super().__init__(key)
 
+        if not isinstance(garble_keys, Iterable):
+            raise TypeError(
+                f"argument 'garble_keys' must be an Iterable or bytes-like object, not {type(garble_keys).__name__}"
+            )
+        self._garble_ciphers: list[TarsCppTCTEAWithModeCBC] = []
+        for idx, garble_key in enumerate(garble_keys, start=1):
+            self._garble_ciphers.append(
+                TarsCppTCTEAWithModeCBC(garble_key, rounds=32)
+            )
+
     def encrypt(self, plaindata: BytesLike, /) -> bytes:
-        plaindata = tobytes(plaindata)
+        # self.decrypt() 的反向操作
+        result = tobytes(plaindata)
 
-        qmcv2_key_encv1_key_encrypted = super().encrypt(plaindata)
-        qmcv2_key_encv1_key_encrypted_b64encoded = b64encode(qmcv2_key_encv1_key_encrypted)
+        result = b64encode(super().encrypt(result))
 
-        try:
-            encrypt_stage1 = self._encrypt_stage1_decrypt_stage2_tea_cipher.encrypt(
-                qmcv2_key_encv1_key_encrypted_b64encoded
-            )
-        except Exception as exc:
-            raise CipherEncryptingError('QMCv2 key encrypt v2 stage 1 key encrypt failed') from exc
-        try:
-            encrypt_stage2 = self._encrypt_stage2_decrypt_stage1_tea_cipher.encrypt(
-                encrypt_stage1
-            )
-        except Exception as exc:
-            raise CipherEncryptingError('QMCv2 key encrypt v2 stage 2 key encrypt failed') from exc
+        for garble_cipher in self._garble_ciphers[::-1]:
+            result = garble_cipher.encrypt(result)
 
-        return encrypt_stage2
+        return result
 
     def decrypt(self, cipherdata: BytesLike, /) -> bytes:
-        cipherdata = tobytes(cipherdata)
+        result = tobytes(cipherdata)
         # cipherdata 应当是 b64decode 之后，去除了开头 18 个字符的结果
 
-        try:
-            decrypt_stage1: bytes = self._encrypt_stage2_decrypt_stage1_tea_cipher.decrypt(
-                cipherdata, zero_check=True
-            )
-        except Exception as exc:
-            raise CipherDecryptingError('QMCv2 key encrypt v2 stage 1 key decrypt failed') from exc
-        try:
-            decrypt_stage2: bytes = self._encrypt_stage1_decrypt_stage2_tea_cipher.decrypt(
-                decrypt_stage1, zero_check=True
-            )  # 实际上就是 QMCv2 Key Encrypt V1 的密钥
-        except Exception as exc:
-            raise CipherDecryptingError('QMCv2 key encrypt v2 stage 2 key decrypt failed') from exc
-
-        qmcv2_key_encv1_key_encrypted = b64decode(decrypt_stage2, validate=True)
-        qmcv2_key_encv1_key = super().decrypt(qmcv2_key_encv1_key_encrypted)
-
-        return qmcv2_key_encv1_key
+        for garble_cipher in self._garble_ciphers:
+            result = garble_cipher.decrypt(result, zero_check=True)
+        # 结束循环时，cipherdata 应当是使用 QMCv2 Key Encrypt V1 加密的密钥
+        return super().decrypt(b64decode(result, validate=True))

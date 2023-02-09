@@ -6,7 +6,7 @@ import warnings
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, IO, Literal, NamedTuple
+from typing import Callable, IO, Iterable, Literal, NamedTuple
 
 from .qmcdataciphers import HardenedRC4, Mask128
 from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
@@ -888,8 +888,7 @@ class QMCv2(EncryptedBytesIOSkel):
         )
         instance = cls.open(qmcv2_filething,
                             core_key=simple_key,
-                            garble_key1=mix_key1,
-                            garble_key2=mix_key2,
+                            garble_keys=(mix_key1, mix_key2),
                             master_key=master_key
                             )
         instance._core_key_deprecated = tobytes(simple_key)
@@ -900,8 +899,7 @@ class QMCv2(EncryptedBytesIOSkel):
     def open(cls,
              filething_or_info: tuple[Path | IO[bytes], QMCv2FileInfo | None] | FilePath | IO[bytes], /,
              core_key: BytesLike = None,
-             garble_key1: BytesLike = None,
-             garble_key2: BytesLike = None,
+             garble_keys: Iterable[BytesLike] = None,
              master_key: BytesLike = None,
              encrypt_method: Literal['map', 'mask', 'rc4'] = None
              ):
@@ -917,15 +915,16 @@ class QMCv2(EncryptedBytesIOSkel):
         第二个参数 ``core_key`` 一般情况下是必需的，用于解密文件内嵌的主密钥。
         例外：如果你提供了第五个参数 ``master_key``，那么它是可选的。
 
-        第三、第四个参数 ``garble_key1`` 和 ``garble_key2``，仅在探测到文件内嵌的主密钥使用了
-        V2 加密时是必需的。在其他情况下，它们的值会被忽略。
+        第三个参数 ``garble_keys`` 是一组混淆密钥，仅在探测到文件内嵌的主密钥使用了
+        V2 加密时是必需的。如果提供，应当是一个由至少一个混淆密钥（字节对象）组成的可迭代对象，
+        且其中的混淆密钥需要按照正确的顺序排列，否则会导致无法解密主密钥和打开文件。
+        在其他情况下，此参数会被忽略。
 
-        第五个参数 ``master_key`` 可选，如果提供，将会被作为主密钥使用，
-        而文件内置的主密钥会被忽略，``core_key``、``garble_key1`` 和 ``garble_key2``
-        也不再是必需参数。
+        第四个参数 ``master_key`` 可选，如果提供，将会被作为主密钥使用，
+        而文件内置的主密钥会被忽略，``core_key``、``garble_keys`` 也不再是必需参数。
         例外：如果探测到文件未嵌入任何形式的密钥，那么此参数是必需的。
 
-        第六个参数 ``encrypt_method`` 用于指定文件数据使用的加密方式，支持以下值：
+        第五个参数 ``encrypt_method`` 用于指定文件数据使用的加密方式，支持以下值：
 
         - ``'map'`` 或 ``'mask'`` - 掩码表（Mask128）
         - ``'rc4'`` - 强化版 RC4（HardenedRC4）
@@ -936,21 +935,16 @@ class QMCv2(EncryptedBytesIOSkel):
         Args:
             filething_or_info: 源文件的路径或文件对象，或者 probe_qmc() 和 probe_qmcv2() 的返回值
             core_key: 核心密钥，用于解密文件内嵌的主密钥
-            garble_key1: 混淆密钥 1，用于解密使用 V2 加密的主密钥
-            garble_key2: 混淆密钥 2，用于解密使用 V2 加密的主密钥
+            garble_keys: 混淆密钥列表，用于解密使用 V2 加密的主密钥，其中的混淆密钥需要按照正确的顺序排列
             master_key: 如果提供，将会被作为主密钥使用，而文件内置的主密钥会被忽略
             encrypt_method: 用于指定文件数据使用的加密方式，支持 'map'、'mask'、'rc4' 或 None
         Raises:
-            TypeError: 参数 core_key 和 master_key 都未提供，或者缺少 garble_key1 或 garble_key2 用于解密 V2 加密的主密钥
+            TypeError: 参数 core_key 和 master_key 都未提供，或者缺少 garble_keys 从而无法解密 V2 加密的主密钥
             ValueError: encrypt_method 的值不符合上述条件
             CrypterCreatingError: probe_qmcv2() 返回的文件信息中，master_key_encryption_ver 的值是当前不支持的
         """
         if core_key is not None:
             core_key = tobytes(core_key)
-        if garble_key1 is not None:
-            garble_key1 = tobytes(garble_key1)
-        if garble_key2 is not None:
-            garble_key2 = tobytes(garble_key2)
         if master_key is not None:
             master_key = tobytes(master_key)
         if encrypt_method is not None:
@@ -965,6 +959,8 @@ class QMCv2(EncryptedBytesIOSkel):
                         f"argument 'encrypt_method' must be str, "
                         f"not {type(encrypt_method).__name__}"
                     )
+        if garble_keys is not None:
+            garble_keys = [tobytes(_) for _ in garble_keys]
 
         def operation(fd: IO[bytes]) -> cls:
             cipher_data_len = fileinfo.cipher_data_len
@@ -989,24 +985,12 @@ class QMCv2(EncryptedBytesIOSkel):
                         master_key_encrypted
                     )
                 elif master_key_encryption_ver == 2:
-                    if garble_key1 is None and garble_key2 is None:
-                        raise TypeError(
-                            "argument 'garble_key1' and 'garble_key2' is required to "
-                            "decrypt the QMCv2 Key Encryption V2 protected master key"
+                    if not garble_keys:
+                        raise ValueError(
+                            "argument 'garble_keys' is required to decrypt the "
+                            "QMCv2 Key Encryption V2 protected master key"
                         )
-                    elif garble_key1 is None:
-                        raise TypeError(
-                            "argument 'garble_key1' is required to "
-                            "decrypt the QMCv2 Key Encryption V2 protected master key"
-                        )
-                    elif garble_key2 is None:
-                        raise TypeError(
-                            "argument 'garble_key2' is required to "
-                            "decrypt the QMCv2 Key Encryption V2 protected master key"
-                        )
-                    target_master_key = QMCv2KeyEncryptV2(
-                        core_key, garble_key1, garble_key2
-                    ).decrypt(master_key_encrypted)
+                    target_master_key = QMCv2KeyEncryptV2(core_key, garble_keys).decrypt(master_key_encrypted)
                 else:
                     raise CrypterCreatingError(
                         f"unsupported master key encryption version {master_key_encryption_ver}"
@@ -1146,16 +1130,14 @@ class QMCv2(EncryptedBytesIOSkel):
             simple_key = self.core_key
         return self.save(core_key=simple_key,
                          filething=qmcv2_filething,
-                         garble_key1=mix_key1,
-                         garble_key2=mix_key2,
+                         garble_keys=(mix_key1, mix_key2),
                          with_extra_info=with_extra_info
                          )
 
     def save(self,
              core_key: BytesLike = None,
              filething: FilePath | IO[bytes] = None,
-             garble_key1: BytesLike = None,
-             garble_key2: BytesLike = None,
+             garble_keys: Iterable[BytesLike] = None,
              with_extra_info: bool = False
              ) -> None:
         """将当前对象保存为一个新 QMCv2 文件。
@@ -1181,8 +1163,7 @@ class QMCv2(EncryptedBytesIOSkel):
         Args:
             core_key: 核心密钥，用于加密主密钥，以便嵌入到文件
             filething: 目标文件的路径或文件对象
-            garble_key1: 混淆密钥 1，用于使用 V2 加密方式加密主密钥
-            garble_key2: 混淆密钥 2，用于使用 V2 加密方式加密主密钥
+            garble_keys: 混淆密钥列表，用于使用 V2 方式加密主密钥，其中的混淆密钥需要按照正确的顺序排列
             with_extra_info: 是否在文件末尾添加额外信息（self.extra_info）
 
         Raises:
@@ -1190,10 +1171,8 @@ class QMCv2(EncryptedBytesIOSkel):
         """
         if core_key is not None:
             core_key = tobytes(core_key)
-        if garble_key1 is not None:
-            garble_key1 = tobytes(garble_key1)
-        if garble_key2 is not None:
-            garble_key2 = tobytes(garble_key2)
+        if garble_keys is not None:
+            garble_keys = [tobytes(_) for _ in garble_keys]
 
         def operation(fd: IO[bytes]) -> None:
             fd.seek(0, 0)
@@ -1235,26 +1214,14 @@ class QMCv2(EncryptedBytesIOSkel):
 
                     return
 
-            if garble_key1 is None and garble_key2 is None:  # QMCv2 KeyencV1
-                master_key_encrypted = QMCv2KeyEncryptV1(core_key).encrypt(master_key)
-                master_key_encrypted_b64encoded = b64encode(master_key_encrypted)
-            else:  # QMCv2 KeyEncV2
-                if garble_key1 is None:
-                    raise TypeError(
-                        "argument 'garble_key1' is required to encrypt the master key "
-                        "with QMCv2 Key Encryption V2 before embed to file"
-                    )
-                if garble_key2 is None:
-                    raise TypeError(
-                        "argument 'garble_key2' is required to encrypt the master key "
-                        "with QMCv2 Key Encryption V2 before embed to file"
-                    )
-                master_key_encrypted = QMCv2KeyEncryptV2(
-                    core_key, garble_key1, garble_key2
-                ).encrypt(master_key)
+            if garble_keys:
+                master_key_encrypted = QMCv2KeyEncryptV2(core_key, garble_keys).encrypt(master_key)
                 master_key_encrypted_b64encoded = b64encode(
                     b'QQMusic EncV2,Key:' + master_key_encrypted
                 )
+            else:
+                master_key_encrypted = QMCv2KeyEncryptV1(core_key).encrypt(master_key)
+                master_key_encrypted_b64encoded = b64encode(master_key_encrypted)
             fd.write(self.getvalue(nocryptlayer=True))
             fd.write(master_key_encrypted_b64encoded)
             fd.write(len(master_key_encrypted_b64encoded).to_bytes(4, 'little'))
