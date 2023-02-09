@@ -32,7 +32,8 @@ __all__ = [
     'QMCv2FileInfo'
 ]
 
-QMCV1_SUFFIX_PATTERN = re.compile('\\.qmc[a-zA-Z0-9]{1,4}$', flags=re.IGNORECASE)
+QMCV1_FILENAME_PATTERN = re.compile(r'^.*\.qmc([0-9]|flac|ogg|ra)$', flags=re.IGNORECASE)
+QMCv2_FILENAME_PATTERN = re.compile(r'^.*\.m(flac|gg)[0-9a-zA-Z]?$', flags=re.IGNORECASE)
 
 
 @dataclass
@@ -180,7 +181,7 @@ def probe_qmcv1(filething: FilePath | IO[bytes], /, is_qmcv1: bool = False) -> t
         if filename is None and not is_qmcv1:
             return
         filepath = Path(filename)
-        if QMCV1_SUFFIX_PATTERN.search(filepath.suffix) or is_qmcv1:
+        if QMCV1_FILENAME_PATTERN.fullmatch(filepath.name) or is_qmcv1:
             return QMCv1FileInfo(
                 cipher_data_offset=0,
                 cipher_data_len=fd.seek(0, 2)
@@ -1152,12 +1153,13 @@ class QMCv2(EncryptedBytesIOSkel):
         如果未提供此参数，那么将会尝试使用当前对象的 ``source`` 属性；如果后者也不可用，则引发
         ``TypeError``。
 
-        第三、第四个参数 ``garble_key1`` 和 ``garble_key2``，决定对主密钥进行加密的方法；
-        如果提供，则需要两个一起提供，将会对主密钥采用 V2 加密；否则，对主密钥采用 V1 加密。
+        第三个参数 ``garble_keys`` 是一组混淆密钥，如果提供，将会对主密钥使用 V2 加密，
+        否则使用 V1 加密。它应当是一个由至少一个混淆密钥（字节对象）组成的可迭代对象，
+        且其中的混淆密钥需要按照正确的顺序排列。
         如果参数 ``with_extra_info=True`` 且当前对象的属性 ``extra_info``
-        是一个 ``QMCv2STag`` 对象，它们的值会被忽略。
+        是一个 ``QMCv2STag`` 对象，此参数会被忽略。
 
-        第五个参数 ``with_extra_info`` 如果为 ``True``，且当前对象的属性 ``extra_info`` 是
+        第四个参数 ``with_extra_info`` 如果为 ``True``，且当前对象的属性 ``extra_info`` 是
         ``QMCv2QTag`` 或 ``QMCv2STag`` 对象，那么这些对象将会被序列化后嵌入文件。
 
         Args:
