@@ -93,21 +93,36 @@ _FileInfo = TypeVar('_FileInfo', bound=NamedTuple)
 
 
 def proberfuncfactory(docstring_from=None):
+    """本装饰器是一个工厂函数，被装饰的函数必须具备以下行为：
+
+    - 至少接受一个参数（位于第一个），并将此参数视为文件对象进行操作
+    - 内含探测文件结构的所有逻辑
+    - 如果探测到受支持的文件，返回一个 NamedTuple 对象，该对象包含探测到的信息；否则返回 `None`
+
+    具备以上行为的函数在被本装饰器装饰后，将会变成一个文件结构探测函数，具备以下行为：
+
+    - 第一个纯位置参数为文件路径或文件对象，随后的任何参数都会被传递给被装饰的函数
+    - 返回一个 2 元组：
+
+        - 第一个元素是接受的文件路径或文件对象
+        - 第二个元素是探测结果，具体内容见上文
+    """
+
     def prober(
             operation: Callable[[IO[bytes], ...], _FileInfo | None]
     ) -> Callable[[FilePath, ...], tuple[FilePath | IO[bytes], _FileInfo | None]]:
         @wraps(operation)
-        def wrapper(filething: FilePath | IO[bytes], /, **kwargs) -> tuple[FilePath | IO[bytes], _FileInfo | None]:
+        def wrapper(filething: FilePath | IO[bytes], /, *args, **kwargs) -> tuple[FilePath | IO[bytes], _FileInfo | None]:
             if isfilepath(filething):
                 with open(filething, mode='rb') as fileobj:
-                    return Path(filething), operation(fileobj, **kwargs)
+                    return Path(filething), operation(fileobj, *args, **kwargs)
             else:
                 fileobj = verify_fileobj(filething, 'binary',
                                          verify_readable=True,
                                          verify_seekable=True
                                          )
                 fileobj_origpos = fileobj.tell()
-                prs = operation(fileobj, **kwargs)
+                prs = operation(fileobj, *args, **kwargs)
                 fileobj.seek(fileobj_origpos, 0)
 
                 return fileobj, prs
