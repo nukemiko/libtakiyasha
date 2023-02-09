@@ -6,12 +6,13 @@ import warnings
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, IO, Iterable, Literal, NamedTuple
+from typing import Callable, IO, Iterable, Literal, NamedTuple, overload
 
 from .qmcdataciphers import HardenedRC4, Mask128
 from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_random_ascii_string, make_salt
+from ..miscutils import proberfuncfactory
 from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, IntegerLike
 from ..typeutils import isfilepath, tobytes, verify_fileobj
@@ -147,8 +148,16 @@ def _guess_cipher_ctor(master_key: BytesLike, /,
         return Mask128
 
 
-def probe_qmcv1(filething: FilePath | IO[bytes], /, is_qmcv1: bool = False) -> tuple[Path | IO[bytes], QMCv1FileInfo | None]:
-    """探测源文件 ``filething`` 是否为一个 QMCv1 文件。
+@overload
+def probe_qmcv1(filething: FilePath | IO[bytes], /,
+                is_qmcv1: bool = False
+                ) -> tuple[Path | IO[bytes], QMCv1FileInfo | None]:
+    pass
+
+
+@proberfuncfactory
+def probe_qmcv1(filething, /, is_qmcv1=False):
+    r"""探测源文件 ``filething`` 是否为一个 QMCv1 文件。
 
     返回一个 2 个元素长度的元组：
 
@@ -156,13 +165,14 @@ def probe_qmcv1(filething: FilePath | IO[bytes], /, is_qmcv1: bool = False) -> t
     - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCv1FileInfo`` 对象；
     - 否则为 ``None``。
 
-    目前难以通过文件结构识别 QMCv1 文件，因此本方法通过文件扩展名判断是否为 QMCv1 文件。
-    只要文件扩展名匹配下列正则表达式模式（不区分大小写），本方法就会将此文件视为一个 QMCv1 文件：
+    目前无法在没有密钥的情况下通过文件结构识别 QMCv1 文件，
+    因此本方法通过文件名模式判断是否为 QMCv1 文件。
+    只要文件名匹配下列正则表达式模式（不区分大小写），本方法就会将此文件视为一个 QMCv1 文件：
 
-    ``^\\.qmc[a-zA-Z0-9]{1,4}$``
+    ``^.*\.qmc([0-9]|flac|ogg|ra)$``
 
-    对于不匹配以上正则表达式的文件扩展名（或者无法获取到文件扩展名），如果参数
-    ``is_qmcv1=True``，本方法会跳过探测过程，认为此文件是一个 QMCv1 文件，并直接返回结果。
+    对于不匹配以上正则表达式的文件名，如果参数 ``is_qmcv1=True``，
+    本方法会跳过探测过程，认为此文件是一个 QMCv1 文件，并直接返回结果。
 
     本方法的返回值可以用于 ``QMCv1.open()`` 的第一个位置参数。
 
@@ -176,33 +186,24 @@ def probe_qmcv1(filething: FilePath | IO[bytes], /, is_qmcv1: bool = False) -> t
         filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；否则为 None。
     """
 
-    def operation(fd: IO[bytes]) -> QMCv1FileInfo | None:
-        filename = getattr(fd, 'name', None)
-        if filename is None and not is_qmcv1:
-            return
-        filepath = Path(filename)
-        if QMCV1_FILENAME_PATTERN.fullmatch(filepath.name) or is_qmcv1:
-            return QMCv1FileInfo(
-                cipher_data_offset=0,
-                cipher_data_len=fd.seek(0, 2)
-            )
-
-    if isfilepath(filething):
-        with open(filething, mode='rb') as fileobj:
-            return Path(filething), operation(fileobj)
-    else:
-        fileobj = verify_fileobj(filething, 'binary',
-                                 verify_readable=True,
-                                 verify_seekable=True
-                                 )
-        fileobj_origpos = fileobj.tell()
-        prs = operation(fileobj)
-        fileobj.seek(fileobj_origpos, 0)
-
-        return fileobj, prs
+    filename = getattr(filething, 'name', None)
+    if filename is None and not is_qmcv1:
+        return
+    filepath = Path(filename)
+    if QMCV1_FILENAME_PATTERN.fullmatch(filepath.name) or is_qmcv1:
+        return QMCv1FileInfo(
+            cipher_data_offset=0,
+            cipher_data_len=filething.seek(0, 2)
+        )
 
 
+@overload
 def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], QMCv2FileInfo | None]:
+    pass
+
+
+@proberfuncfactory
+def probe_qmcv2(filething, /):
     """探测源文件 ``filething`` 是否为一个 QMCv2 文件。
 
     返回一个 2 个元素长度的元组：
@@ -222,73 +223,58 @@ def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], Q
         filething 是 QMCv2 文件，那么第二个元素为一个 QMCv2FileInfo 对象；否则为 None。
     """
 
-    def operation(fd: IO[bytes]) -> QMCv2FileInfo | None:
-        total_size = fd.seek(-4, 2) + 4
-        tail_data = fd.read(4)
+    total_size = filething.seek(-4, 2) + 4
+    tail_data = filething.read(4)
 
-        if tail_data == b'STag':
-            fd.seek(-8, 2)
-            tag_serialized_len = int.from_bytes(fd.read(4), 'big')
-            if tag_serialized_len > (total_size - 8):
-                return
-            cipher_data_len = fd.seek(-(tag_serialized_len + 8), 2)
-            extra_info = QMCv2STag.load(fd.read(tag_serialized_len))
+    if tail_data == b'STag':
+        filething.seek(-8, 2)
+        tag_serialized_len = int.from_bytes(filething.read(4), 'big')
+        if tag_serialized_len > (total_size - 8):
+            return
+        cipher_data_len = filething.seek(-(tag_serialized_len + 8), 2)
+        extra_info = QMCv2STag.load(filething.read(tag_serialized_len))
 
-            cipher_ctor = None
-            master_key_encrypted = None
-            master_key_encryption_ver = None
-        elif tail_data == b'QTag':
-            fd.seek(-8, 2)
-            tag_serialized_len = int.from_bytes(fd.read(4), 'big')
-            if tag_serialized_len > (total_size - 8):
-                return
-            cipher_data_len = fd.seek(-(tag_serialized_len + 8), 2)
-            master_key_encrypted_b64encoded, extra_info = QMCv2QTag.load(fd.read(tag_serialized_len))
-            master_key_encrypted = b64decode(master_key_encrypted_b64encoded)
+        cipher_ctor = None
+        master_key_encrypted = None
+        master_key_encryption_ver = None
+    elif tail_data == b'QTag':
+        filething.seek(-8, 2)
+        tag_serialized_len = int.from_bytes(filething.read(4), 'big')
+        if tag_serialized_len > (total_size - 8):
+            return
+        cipher_data_len = filething.seek(-(tag_serialized_len + 8), 2)
+        master_key_encrypted_b64encoded, extra_info = QMCv2QTag.load(filething.read(tag_serialized_len))
+        master_key_encrypted = b64decode(master_key_encrypted_b64encoded)
 
-            cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
-            master_key_encryption_ver = 1
-        else:
-            extra_info = None
-            master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
-            if master_key_encrypted_b64encoded_len > total_size - 4:
-                return
-            cipher_data_len = fd.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
-            master_key_encrypted_b64encoded = fd.read(master_key_encrypted_b64encoded_len)
-            try:
-                master_key_encrypted_b64encoded.decode('ascii')
-            except UnicodeDecodeError:
-                return
-            master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
-            if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
-                master_key_encrypted = master_key_encrypted_b64decoded[18:]
-                master_key_encryption_ver = 2
-            else:
-                master_key_encrypted = master_key_encrypted_b64decoded
-                master_key_encryption_ver = 1
-            cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
-
-        return QMCv2FileInfo(cipher_ctor=cipher_ctor,
-                             cipher_data_offset=0,
-                             cipher_data_len=cipher_data_len,
-                             master_key_encrypted=master_key_encrypted,
-                             master_key_encryption_ver=master_key_encryption_ver,
-                             extra_info=extra_info
-                             )
-
-    if isfilepath(filething):
-        with open(filething, mode='rb') as fileobj:
-            return Path(filething), operation(fileobj)
+        cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
+        master_key_encryption_ver = 1
     else:
-        fileobj = verify_fileobj(filething, 'binary',
-                                 verify_readable=True,
-                                 verify_seekable=True
-                                 )
-        fileobj_origpos = fileobj.tell()
-        prs = operation(fileobj)
-        fileobj.seek(fileobj_origpos, 0)
+        extra_info = None
+        master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
+        if master_key_encrypted_b64encoded_len > total_size - 4:
+            return
+        cipher_data_len = filething.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
+        master_key_encrypted_b64encoded = filething.read(master_key_encrypted_b64encoded_len)
+        try:
+            master_key_encrypted_b64encoded.decode('ascii')
+        except UnicodeDecodeError:
+            return
+        master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
+        if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
+            master_key_encrypted = master_key_encrypted_b64decoded[18:]
+            master_key_encryption_ver = 2
+        else:
+            master_key_encrypted = master_key_encrypted_b64decoded
+            master_key_encryption_ver = 1
+        cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
 
-        return fileobj, prs
+    return QMCv2FileInfo(cipher_ctor=cipher_ctor,
+                         cipher_data_offset=0,
+                         cipher_data_len=cipher_data_len,
+                         master_key_encrypted=master_key_encrypted,
+                         master_key_encryption_ver=master_key_encryption_ver,
+                         extra_info=extra_info
+                         )
 
 
 def probe_qmc(
