@@ -4,7 +4,7 @@ from __future__ import annotations
 import warnings
 from math import log10
 from pathlib import Path
-from typing import IO, NamedTuple, overload
+from typing import Callable, IO, NamedTuple, overload
 
 from .kwmdataciphers import Mask32, Mask32FromRecipe
 from ..exceptions import CrypterCreatingError, CrypterSavingError
@@ -24,10 +24,25 @@ __all__ = ['KWM', 'probe_kwm', 'KWMFileInfo']
 
 class KWMFileInfo(NamedTuple):
     mask_recipe: bytes
+    """组装主密钥所需的配方。"""
     cipher_data_offset: int
+    """加密数据在文件中开始的位置。"""
     cipher_data_len: int
+    """加密数据在文件中的长度。"""
     bitrate: int | None
+    """加密数据（如果是音频）的比特率。"""
     suffix: str
+    """加密数据的格式，可用于未加密形式文件的后缀。"""
+    opener: Callable[[tuple[FilePath | IO[bytes], KWMFileInfo] | FilePath | IO[bytes], ...], KWM]
+    """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
+    opener_kwargs_required: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
+    opener_kwargs_optional: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
+
+    此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
+    对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
+    """
 
 
 @overload
@@ -84,7 +99,10 @@ def probe_kwm(filething, /):
         cipher_data_offset=cipher_data_offset,
         cipher_data_len=cipher_data_len,
         bitrate=bitrate,
-        suffix=suffix
+        suffix=suffix,
+        opener=KWM.open,
+        opener_kwargs_required=('core_key',),
+        opener_kwargs_optional=('master_key',)
     )
 
 
