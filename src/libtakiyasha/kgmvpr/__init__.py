@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import IO, NamedTuple
+from typing import Callable, IO, NamedTuple, overload
 
 from .kgmvprdataciphers import KGMCryptoLegacy
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_salt
-from ..prototypes import EncryptedBytesIOSkel
+from ..miscutils import proberfuncfactory
+from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 
@@ -19,15 +20,38 @@ __all__ = ['KGMorVPR', 'probe_kgmvpr', 'KGMorVPRFileInfo']
 
 class KGMorVPRFileInfo(NamedTuple):
     cipher_data_offset: int
+    """加密数据在文件中开始的位置。"""
     cipher_data_len: int
+    """加密数据在文件中的长度。"""
     encryption_version: int
+    """加密方法的版本。目前仅支持 3。"""
     core_key_slot: int
+    """加解密数据所需的密钥槽序号。"""
     core_key_test_data: bytes
+    """用于验证文件内主密钥合法性的数据。"""
     master_key: bytes | None
+    """主密钥。需要配合 ``core_key_slot`` 对应的密钥使用。"""
     is_vpr: bool
+    """如果文件使用了 VPR 加密，则为 ``True``。"""
+    opener: Callable[[tuple[FilePath | IO[bytes], KGMorVPRFileInfo] | FilePath | IO[bytes], ...], KGMorVPR]
+    """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
+    opener_kwargs_required: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
+    opener_kwargs_optional: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
+
+    此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
+    对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
+    """
 
 
+@overload
 def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
+    pass
+
+
+@proberfuncfactory
+def probe_kgmvpr(filething, /):
     """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -44,53 +68,43 @@ def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], 
         一个 2 个元素长度的元组：第一个元素为 filething；如果
         filething 是 KGM 或 VPR 文件，那么第二个元素为一个 KGMorVPRFileInfo 对象；否则为 None。
     """
+    opener_kwargs_required = ['table1', 'table2', 'tablev2']
 
-    def operation(fd: IO[bytes]) -> KGMorVPRFileInfo | None:
-        total_size = fd.seek(0, 2)
-        if total_size < 60:
-            return
-        fd.seek(0, 0)
+    total_size = filething.seek(0, 2)
+    if total_size < 60:
+        return
+    filething.seek(0, 0)
 
-        header = fd.read(16)
-        if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
-            is_vpr = True
-        elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
-            is_vpr = False
-        else:
-            return
-
-        cipher_data_offset = int.from_bytes(fd.read(4), 'little')
-        encryption_version = int.from_bytes(fd.read(4), 'little')
-        core_key_slot = int.from_bytes(fd.read(4), 'little')
-        core_key_test_data = fd.read(16)
-        master_key = fd.read(16)
-
-        return KGMorVPRFileInfo(
-            cipher_data_offset=cipher_data_offset,
-            cipher_data_len=total_size - cipher_data_offset,
-            encryption_version=encryption_version,
-            core_key_slot=core_key_slot,
-            core_key_test_data=core_key_test_data,
-            master_key=master_key,
-            is_vpr=is_vpr
-        )
-
-    if isfilepath(filething):
-        with open(filething, mode='rb') as fileobj:
-            return Path(filething), operation(fileobj)
+    header = filething.read(16)
+    if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
+        is_vpr = True
+        opener_kwargs_required.append('vpr_key')
+    elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
+        is_vpr = False
     else:
-        fileobj = verify_fileobj(filething, 'binary',
-                                 verify_readable=True,
-                                 verify_seekable=True
-                                 )
-        fileobj_origpos = fileobj.tell()
-        prs = operation(fileobj)
-        fileobj.seek(fileobj_origpos, 0)
+        return
 
-        return fileobj, prs
+    cipher_data_offset = int.from_bytes(filething.read(4), 'little')
+    encryption_version = int.from_bytes(filething.read(4), 'little')
+    core_key_slot = int.from_bytes(filething.read(4), 'little')
+    core_key_test_data = filething.read(16)
+    master_key = filething.read(16)
+
+    return KGMorVPRFileInfo(
+        cipher_data_offset=cipher_data_offset,
+        cipher_data_len=total_size - cipher_data_offset,
+        encryption_version=encryption_version,
+        core_key_slot=core_key_slot,
+        core_key_test_data=core_key_test_data,
+        master_key=master_key,
+        is_vpr=is_vpr,
+        opener=KGMorVPR.open,
+        opener_kwargs_required=tuple(opener_kwargs_required),
+        opener_kwargs_optional=()
+    )
 
 
-class KGMorVPR(EncryptedBytesIOSkel):
+class KGMorVPR(EncryptedBytesIO):
     """基于 BytesIO 的 KGM/VPR 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：
@@ -201,14 +215,6 @@ class KGMorVPR(EncryptedBytesIOSkel):
             tablev2: 解码表 3
             vpr_key: 针对 VPR 文件额外所需的密钥
         """
-        # if table1 is not None:
-        #     table1 = tobytes(table1)
-        # if table2 is not None:
-        #     table2 = tobytes(table2)
-        # if tablev2 is not None:
-        #     tablev2 = tobytes(tablev2)
-        # if vpr_key is not None:
-        #     vpr_key = tobytes(vpr_key)
         table1 = tobytes(table1)
         table2 = tobytes(table2)
         tablev2 = tobytes(tablev2)

@@ -4,12 +4,13 @@ from __future__ import annotations
 import warnings
 from math import log10
 from pathlib import Path
-from typing import IO, NamedTuple
+from typing import Callable, IO, NamedTuple, overload
 
 from .kwmdataciphers import Mask32, Mask32FromRecipe
 from ..exceptions import CrypterCreatingError, CrypterSavingError
 from ..keyutils import make_salt
-from ..prototypes import EncryptedBytesIOSkel
+from ..miscutils import proberfuncfactory
+from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 
@@ -23,13 +24,34 @@ __all__ = ['KWM', 'probe_kwm', 'KWMFileInfo']
 
 class KWMFileInfo(NamedTuple):
     mask_recipe: bytes
+    """组装主密钥所需的配方。"""
     cipher_data_offset: int
+    """加密数据在文件中开始的位置。"""
     cipher_data_len: int
+    """加密数据在文件中的长度。"""
     bitrate: int | None
+    """加密数据（如果是音频）的比特率。"""
     suffix: str
+    """加密数据的格式，可用于未加密形式文件的后缀。"""
+    opener: Callable[[tuple[FilePath | IO[bytes], KWMFileInfo] | FilePath | IO[bytes], ...], KWM]
+    """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
+    opener_kwargs_required: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
+    opener_kwargs_optional: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
+
+    此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
+    对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
+    """
 
 
+@overload
 def probe_kwm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWMFileInfo | None]:
+    pass
+
+
+@proberfuncfactory
+def probe_kwm(filething, /):
     """探测源文件 ``filething`` 是否为一个 KWM 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -43,61 +65,48 @@ def probe_kwm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWM
         一个 2 个元素长度的元组：第一个元素为 filething；如果
         filething 是 KWM 文件，那么第二个元素为一个 KWMFileInfo 对象；否则为 None。
     """
+    filething.seek(0, 0)
 
-    def operation(fd: IO[bytes]) -> KWMFileInfo | None:
-        fd.seek(0, 0)
+    header_data = filething.read(1024)
+    cipher_data_offset = filething.tell()
+    cipher_data_len = filething.seek(0, 2) - cipher_data_offset
 
-        header_data = fd.read(1024)
-        cipher_data_offset = fd.tell()
-        cipher_data_len = fd.seek(0, 2) - cipher_data_offset
+    if not header_data.startswith(b'yeelion-kuwo'):
+        return
 
-        if not header_data.startswith(b'yeelion-kuwo'):
-            return
+    mask_recipe = header_data[24:32]
 
-        mask_recipe = header_data[24:32]
+    bitrate = None
+    bitrate_suffix_serialized = header_data[48:56].rstrip(b'\x00')
+    bitrate_serialized_len = 0
+    for byte in bitrate_suffix_serialized:
+        if byte in DIGIT_CHARS:
+            bitrate_serialized_len += 1
+    if bitrate_serialized_len > 0:
+        bitrate = int(bitrate_suffix_serialized[:bitrate_serialized_len]) * 1000
 
-        bitrate = None
-        bitrate_suffix_serialized = header_data[48:56].rstrip(b'\x00')
-        bitrate_serialized_len = 0
-        for byte in bitrate_suffix_serialized:
-            if byte in DIGIT_CHARS:
-                bitrate_serialized_len += 1
-        if bitrate_serialized_len > 0:
-            bitrate = int(bitrate_suffix_serialized[:bitrate_serialized_len]) * 1000
+    suffix = None
+    suffix_serialized = bitrate_suffix_serialized[bitrate_serialized_len:]
+    suffix_serialized_len = 0
+    for byte in suffix_serialized:
+        if byte in ASCII_LETTER_CHARS:
+            suffix_serialized_len += 1
+    if suffix_serialized_len > 0:
+        suffix = suffix_serialized[:suffix_serialized_len].decode('ascii')
 
-        suffix = None
-        suffix_serialized = bitrate_suffix_serialized[bitrate_serialized_len:]
-        suffix_serialized_len = 0
-        for byte in suffix_serialized:
-            if byte in ASCII_LETTER_CHARS:
-                suffix_serialized_len += 1
-        if suffix_serialized_len > 0:
-            suffix = suffix_serialized[:suffix_serialized_len].decode('ascii')
-
-        return KWMFileInfo(
-            mask_recipe=mask_recipe,
-            cipher_data_offset=cipher_data_offset,
-            cipher_data_len=cipher_data_len,
-            bitrate=bitrate,
-            suffix=suffix
-        )
-
-    if isfilepath(filething):
-        with open(filething, mode='rb') as fileobj:
-            return Path(filething), operation(fileobj)
-    else:
-        fileobj = verify_fileobj(filething, 'binary',
-                                 verify_readable=True,
-                                 verify_seekable=True
-                                 )
-        fileobj_origpos = fileobj.tell()
-        prs = operation(fileobj)
-        fileobj.seek(fileobj_origpos, 0)
-
-        return fileobj, prs
+    return KWMFileInfo(
+        mask_recipe=mask_recipe,
+        cipher_data_offset=cipher_data_offset,
+        cipher_data_len=cipher_data_len,
+        bitrate=bitrate,
+        suffix=suffix,
+        opener=KWM.open,
+        opener_kwargs_required=('core_key',),
+        opener_kwargs_optional=('master_key',)
+    )
 
 
-class KWM(EncryptedBytesIOSkel):
+class KWM(EncryptedBytesIO):
     """基于 BytesIO 的 KWM 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：
