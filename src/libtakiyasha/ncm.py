@@ -14,7 +14,7 @@ from mutagen import flac, id3
 from .exceptions import CrypterCreatingError
 from .keyutils import make_random_ascii_string, make_random_number_string
 from .miscutils import BINARIES_ROOTDIR, bytestrxor, proberfuncfactory
-from .prototypes import EncryptedBytesIOSkel
+from .prototypes import EncryptedBytesIO
 from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
 from .typeutils import isfilepath, tobytes, verify_fileobj
@@ -418,7 +418,7 @@ def probe_ncm(filething, /):
     )
 
 
-class NCM(EncryptedBytesIOSkel):
+class NCM(EncryptedBytesIO):
     """基于 BytesIO 的 NCM 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：

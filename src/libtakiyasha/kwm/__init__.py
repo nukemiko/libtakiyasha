@@ -10,7 +10,7 @@ from .kwmdataciphers import Mask32, Mask32FromRecipe
 from ..exceptions import CrypterCreatingError, CrypterSavingError
 from ..keyutils import make_salt
 from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIOSkel
+from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 
@@ -88,7 +88,7 @@ def probe_kwm(filething, /):
     )
 
 
-class KWM(EncryptedBytesIOSkel):
+class KWM(EncryptedBytesIO):
     """基于 BytesIO 的 KWM 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：

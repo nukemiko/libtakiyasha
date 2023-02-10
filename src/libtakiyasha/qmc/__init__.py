@@ -13,7 +13,7 @@ from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_random_ascii_string, make_salt
 from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIOSkel
+from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 from ..warns import CrypterSavingWarning
@@ -304,7 +304,7 @@ def probe_qmc(
     return probe_qmcv1(filething)
 
 
-class QMCv1(EncryptedBytesIOSkel):
+class QMCv1(EncryptedBytesIO):
     """基于 BytesIO 的 QMCv1 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：
@@ -528,7 +528,7 @@ class QMCv1(EncryptedBytesIOSkel):
         return cls(Mask128(mask))
 
 
-class QMCv2(EncryptedBytesIOSkel):
+class QMCv2(EncryptedBytesIO):
     """基于 BytesIO 的 QMCv2 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：

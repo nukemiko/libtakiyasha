@@ -9,7 +9,7 @@ from .kgmvprdataciphers import KGMCryptoLegacy
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_salt
 from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIOSkel
+from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
 
@@ -81,7 +81,7 @@ def probe_kgmvpr(filething, /):
     )
 
 
-class KGMorVPR(EncryptedBytesIOSkel):
+class KGMorVPR(EncryptedBytesIO):
     """基于 BytesIO 的 KGM/VPR 透明加密二进制流。
 
     所有读写相关方法都会经过透明加密层处理：
