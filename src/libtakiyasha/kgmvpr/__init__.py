@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import IO, NamedTuple
+from typing import IO, NamedTuple, overload
 
 from .kgmvprdataciphers import KGMCryptoLegacy
 from ..exceptions import CrypterCreatingError
 from ..keyutils import make_salt
+from ..miscutils import proberfuncfactory
 from ..prototypes import EncryptedBytesIOSkel
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
 from ..typeutils import isfilepath, tobytes, verify_fileobj
@@ -27,7 +28,13 @@ class KGMorVPRFileInfo(NamedTuple):
     is_vpr: bool
 
 
+@overload
 def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
+    pass
+
+
+@proberfuncfactory
+def probe_kgmvpr(filething, /):
     """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
 
     返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
@@ -44,50 +51,34 @@ def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], 
         一个 2 个元素长度的元组：第一个元素为 filething；如果
         filething 是 KGM 或 VPR 文件，那么第二个元素为一个 KGMorVPRFileInfo 对象；否则为 None。
     """
+    total_size = filething.seek(0, 2)
+    if total_size < 60:
+        return
+    filething.seek(0, 0)
 
-    def operation(fd: IO[bytes]) -> KGMorVPRFileInfo | None:
-        total_size = fd.seek(0, 2)
-        if total_size < 60:
-            return
-        fd.seek(0, 0)
-
-        header = fd.read(16)
-        if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
-            is_vpr = True
-        elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
-            is_vpr = False
-        else:
-            return
-
-        cipher_data_offset = int.from_bytes(fd.read(4), 'little')
-        encryption_version = int.from_bytes(fd.read(4), 'little')
-        core_key_slot = int.from_bytes(fd.read(4), 'little')
-        core_key_test_data = fd.read(16)
-        master_key = fd.read(16)
-
-        return KGMorVPRFileInfo(
-            cipher_data_offset=cipher_data_offset,
-            cipher_data_len=total_size - cipher_data_offset,
-            encryption_version=encryption_version,
-            core_key_slot=core_key_slot,
-            core_key_test_data=core_key_test_data,
-            master_key=master_key,
-            is_vpr=is_vpr
-        )
-
-    if isfilepath(filething):
-        with open(filething, mode='rb') as fileobj:
-            return Path(filething), operation(fileobj)
+    header = filething.read(16)
+    if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
+        is_vpr = True
+    elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
+        is_vpr = False
     else:
-        fileobj = verify_fileobj(filething, 'binary',
-                                 verify_readable=True,
-                                 verify_seekable=True
-                                 )
-        fileobj_origpos = fileobj.tell()
-        prs = operation(fileobj)
-        fileobj.seek(fileobj_origpos, 0)
+        return
 
-        return fileobj, prs
+    cipher_data_offset = int.from_bytes(filething.read(4), 'little')
+    encryption_version = int.from_bytes(filething.read(4), 'little')
+    core_key_slot = int.from_bytes(filething.read(4), 'little')
+    core_key_test_data = filething.read(16)
+    master_key = filething.read(16)
+
+    return KGMorVPRFileInfo(
+        cipher_data_offset=cipher_data_offset,
+        cipher_data_len=total_size - cipher_data_offset,
+        encryption_version=encryption_version,
+        core_key_slot=core_key_slot,
+        core_key_test_data=core_key_test_data,
+        master_key=master_key,
+        is_vpr=is_vpr
+    )
 
 
 class KGMorVPR(EncryptedBytesIOSkel):
