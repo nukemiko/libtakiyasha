@@ -44,9 +44,9 @@ class QMCv2QTag:
     可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
     """
     song_id: int = 0
-    """此歌曲在 QQ 音乐的 ID。"""
+    """QTag 数据的第二部分，为 QTag 数据所在文件中被加密的歌曲在 QQ 音乐的 ID。"""
     unknown: int = 2
-    """含义未知，在已知所有样本中都为 2。"""
+    """QTag 数据的第三部分，含义未知，在已知所有样本中都为 2。"""
 
     @classmethod
     def load(cls, qtag_serialized: BytesLike, /):
@@ -76,13 +76,16 @@ class QMCv2QTag:
 
 @dataclass
 class QMCv2STag:
-    """解析、存储和重建 QMCv2 文件末尾的 STag 数据。"""
+    """解析、存储和重建 QMCv2 文件末尾的 STag 数据。
+
+    可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
+    """
     song_id: int = 0
-    """此歌曲在 QQ 音乐的 ID。"""
+    """STag 数据的第一部分，为 QTag 数据所在文件中被加密的歌曲在 QQ 音乐的 ID。"""
     unknown: int = 2
-    """含义未知，在已知所有样本中都为 2。"""
+    """STag 数据的第二部分，含义未知，在已知所有样本中都为 2。"""
     song_mid: str = '0' * 14
-    """此歌曲在 QQ 音乐的媒体 ID（MId）。"""
+    """STag 数据的第三部分，为 QTag 数据所在文件中被加密的歌曲在 QQ 音乐的媒体 ID（MId）。"""
 
     @classmethod
     def load(cls, stag_serialized: BytesLike, /):
@@ -100,10 +103,7 @@ class QMCv2STag:
         return cls(song_id=song_id, unknown=unknown, song_mid=song_mid)
 
     def dump(self) -> bytes:
-        """根据当前 QMCv2STag 对象生成并返回一段 STag 数据。
-
-        可以按照操作数据类（``dataclass``）实例的方式操作本类的实例。
-        """
+        """根据当前 QMCv2STag 对象生成并返回一段 STag 数据。"""
         return b','.join(
             [
                 str(self.song_id).encode('ascii'),
