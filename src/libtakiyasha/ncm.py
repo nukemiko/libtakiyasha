@@ -329,7 +329,7 @@ class NCMFileInfo(NamedTuple):
     要想打开文件，需要使用 ``NCM.open()``。不可以直接通过 ``NCMFileInfo`` 打开文件。
     """
     master_key_encrypted: bytes
-    """已加密的主密钥。"""
+    """受加密保护的主密钥。"""
     ncm_163key: bytes
     """歌曲在网易云音乐平台上的歌曲信息，为 AES 加密的 JSON 字符串。"""
     cipher_ctor: Callable[[...], ARC4]
@@ -345,10 +345,14 @@ class NCMFileInfo(NamedTuple):
     """封面数据在文件中的长度。"""
     opener: Callable[[tuple[FilePath | IO[bytes], NCMFileInfo] | FilePath | IO[bytes], ...], NCM]
     """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
-    opener_kwargs_required: list[str]
-    """通过 `opener` 打开文件时，所必需的关键字参数的名称。"""
-    opener_kwargs_optional: list[str]
-    """通过 `opener` 打开文件时，可选的关键字参数的名称。"""
+    opener_kwargs_required: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
+    opener_kwargs_optional: tuple[str, ...]
+    """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
+    
+    此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
+    对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
+    """
 
 
 @overload
@@ -413,8 +417,8 @@ def probe_ncm(filething, /):
         cover_data_offset=cover_data_offset,
         cover_data_len=cover_data_len,
         opener=NCM.open,
-        opener_kwargs_required=['core_key'],
-        opener_kwargs_optional=['tag_key', 'master_key']
+        opener_kwargs_required=('core_key',),
+        opener_kwargs_optional=('tag_key', 'master_key')
     )
 
 
