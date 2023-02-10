@@ -346,7 +346,8 @@ def probe_qmcv2(filething, /):
 
 
 def probe_qmc(
-        filething: FilePath | IO[bytes], /
+        filething: FilePath | IO[bytes], /,
+        is_qmcv1: bool = False
 ) -> tuple[Path | IO[bytes], QMCv1FileInfo | None] | tuple[Path | IO[bytes], QMCv2FileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 QMCv1 或 QMCv2 文件。
 
@@ -361,6 +362,7 @@ def probe_qmc(
 
     Args:
         filething: 源文件的路径或文件对象
+        is_qmcv1: （针对 QMCv1 文件）跳过探测过程，认为源文件是一个 QMCv1 文件；QMCv2 文件不受此参数影响
     Returns:
         一个 2 个元素长度的元组：第一个元素为 filething；如果
         filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；如果
@@ -369,7 +371,7 @@ def probe_qmc(
     fthing, fileinfo = probe_qmcv2(filething)
     if fileinfo:
         return fthing, fileinfo
-    return probe_qmcv1(filething)
+    return probe_qmcv1(filething, is_qmcv1=is_qmcv1)
 
 
 class QMCv1(EncryptedBytesIO):
