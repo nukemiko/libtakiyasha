@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from typing import Generator, Literal
 
-from ..miscutils import bytestrxor
-from ..prototypes import KeyStreamBasedStreamCipherSkel
+from .._miscutils import bytestrxor
+from .._prototypes import KeyStreamBasedStreamCipherSkel
+from .._typeutils import tobytes, toint
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import tobytes, toint
 
 __all__ = ['Mask32', 'Mask32FromRecipe']
 

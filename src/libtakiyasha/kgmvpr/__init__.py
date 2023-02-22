@@ -5,13 +5,13 @@ import warnings
 from pathlib import Path
 from typing import Callable, IO, NamedTuple, overload
 
-from .kgmvprdataciphers import KGMCryptoLegacy
+from ._kgmvprdataciphers import KGMCryptoLegacy
+from .._keyutils import make_salt
+from .._miscutils import proberfuncfactory
+from .._prototypes import EncryptedBytesIO
+from .._typeutils import isfilepath, tobytes, verify_fileobj
 from ..exceptions import CrypterCreatingError
-from ..keyutils import make_salt
-from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, StreamCipherProto
-from ..typeutils import isfilepath, tobytes, verify_fileobj
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 

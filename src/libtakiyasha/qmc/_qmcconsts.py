@@ -5,7 +5,7 @@ import pickle
 from pathlib import Path
 from typing import Final
 
-from ..miscutils import BINARIES_ROOTDIR
+from .._miscutils import BINARIES_ROOTDIR
 
 __all__ = ['KEY256_MAPPING']
 

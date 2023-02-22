@@ -6,13 +6,13 @@ from math import log10
 from pathlib import Path
 from typing import Callable, IO, NamedTuple, overload
 
-from .kwmdataciphers import Mask32, Mask32FromRecipe
+from ._kwmdataciphers import Mask32, Mask32FromRecipe
+from .._keyutils import make_salt
+from .._miscutils import proberfuncfactory
+from .._prototypes import EncryptedBytesIO
+from .._typeutils import isfilepath, tobytes, toint, verify_fileobj
 from ..exceptions import CrypterCreatingError, CrypterSavingError
-from ..keyutils import make_salt
-from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike, KeyStreamBasedStreamCipherProto, StreamCipherProto
-from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 

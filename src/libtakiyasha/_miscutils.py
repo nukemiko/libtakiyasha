@@ -5,8 +5,8 @@ from functools import wraps
 from pathlib import Path
 from typing import Callable, IO, Iterable, Mapping, NamedTuple, TypeVar
 
+from ._typeutils import isfilepath, tobytes, verify_fileobj
 from .typedefs import BytesLike, FilePath, KT, T, VT
-from .typeutils import isfilepath, tobytes, verify_fileobj
 
 __all__ = [
     'BINARIES_ROOTDIR',
@@ -15,7 +15,7 @@ __all__ = [
     'proberfuncfactory'
 ]
 
-BINARIES_ROOTDIR = Path(__file__).parent / 'binaries'
+BINARIES_ROOTDIR = Path(__file__).parent / '_binaries'
 
 
 def getattribute(obj: object,

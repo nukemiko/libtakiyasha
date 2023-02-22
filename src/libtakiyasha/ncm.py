@@ -11,13 +11,13 @@ from typing import Callable, IO, Literal, NamedTuple, Type
 
 from mutagen import flac, id3
 
+from ._keyutils import make_random_ascii_string, make_random_number_string
+from ._miscutils import BINARIES_ROOTDIR, bytestrxor
+from ._prototypes import EncryptedBytesIO
+from ._stdciphers import ARC4, StreamedAESWithModeECB
+from ._typeutils import isfilepath, tobytes, verify_fileobj
 from .exceptions import CrypterCreatingError
-from .keyutils import make_random_ascii_string, make_random_number_string
-from .miscutils import BINARIES_ROOTDIR, bytestrxor
-from .prototypes import EncryptedBytesIO
-from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
-from .typeutils import isfilepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
