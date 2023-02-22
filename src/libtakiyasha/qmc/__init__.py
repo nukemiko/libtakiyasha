@@ -35,7 +35,7 @@ __all__ = [
 ]
 
 QMCV1_FILENAME_PATTERN = re.compile(r'^.*\.qmc([0-9]|flac|ogg|ra)$', flags=re.IGNORECASE)
-QMCv2_FILENAME_PATTERN = re.compile(r'^.*\.m(flac|gg)[0-9a-zA-Z]?$', flags=re.IGNORECASE)
+QMCv2_FILENAME_PATTERN = re.compile(r'^.*\.m(flac|gg|mp4)[0-9a-zA-Z]?$', flags=re.IGNORECASE)
 
 
 @dataclass
