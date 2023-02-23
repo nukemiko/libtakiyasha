@@ -13,11 +13,11 @@ from typing import Generator, Literal
 from pyaes import AESModeOfOperationECB
 from pyaes.util import append_PKCS7_padding, strip_PKCS7_padding
 
-from .prototypes import KeyStreamBasedStreamCipherSkel, CipherSkel
+from ._prototypes import KeyStreamBasedStreamCipherSkel, CipherSkel
 from .exceptions import CipherDecryptingError
 from .typedefs import IntegerLike, BytesLike
-from .miscutils import bytestrxor
-from .typeutils import CachedClassInstanceProperty, tobytes, toint
+from ._miscutils import bytestrxor
+from ._typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = [
     'StreamedAESWithModeECB',

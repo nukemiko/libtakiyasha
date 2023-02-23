@@ -4,10 +4,10 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Generator, Literal
 
-from .qmcconsts import KEY256_MAPPING
-from ..prototypes import KeyStreamBasedStreamCipherSkel
+from ._qmcconsts import KEY256_MAPPING
+from .._prototypes import KeyStreamBasedStreamCipherSkel
+from .._typeutils import CachedClassInstanceProperty, tobytes, toint
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
 
 class Mask128(KeyStreamBasedStreamCipherSkel):

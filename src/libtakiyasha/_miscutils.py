@@ -1,30 +1,29 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from functools import wraps
 from pathlib import Path
-from typing import Callable, IO, Iterable, Mapping, NamedTuple, TypeVar
+from typing import Iterable, Mapping
 
-from .typedefs import BytesLike, FilePath, KT, T, VT
-from .typeutils import isfilepath, tobytes, verify_fileobj
+from ._typeutils import tobytes
+from .typedefs import BytesLike, KT, T, VT
 
 __all__ = [
     'BINARIES_ROOTDIR',
     'bytestrxor',
-    'getattribute',
-    'proberfuncfactory'
+    'getattribute'
 ]
 
-BINARIES_ROOTDIR = Path(__file__).parent / 'binaries'
+BINARIES_ROOTDIR = Path(__file__).parent / '_binaries'
 
 
-def getattribute(obj: object,
-                 name: str,
-                 *default: T,
-                 follow_callable: bool = False,
-                 callable_args: Iterable = None,
-                 callable_kwargs: Mapping | Iterable[tuple[KT, VT]] = None
-                 ) -> T:
+def getattribute(
+        obj: object,
+        name: str,
+        *default: T,
+        follow_callable: bool = False,
+        callable_args: Iterable = None,
+        callable_kwargs: Mapping | Iterable[tuple[KT, VT]] = None
+) -> T:
     """用法：``getattribute(object, name[, default][, follow_callable=...][, callable_args=...][, callable_kwargs=...]) -> value``
 
     ``getattribute()`` 的用法与 ``getattr()`` 基本一致。
@@ -87,55 +86,3 @@ def bytestrxor(term1: BytesLike, term2: BytesLike, /) -> bytes:
         )
 
     return bytes(b1 ^ b2 for b1, b2 in zip(bytestring1, bytestring2))
-
-
-_FileInfo = TypeVar('_FileInfo', bound=NamedTuple)
-
-
-def proberfuncfactory(docstring_from=None):
-    """本装饰器是一个工厂函数，被装饰的函数必须具备以下行为：
-
-    - 至少接受一个参数（位于第一个），并将此参数视为文件对象进行操作
-    - 内含探测文件结构的所有逻辑
-    - 如果探测到受支持的文件，返回一个 NamedTuple 对象，该对象包含探测到的信息；否则返回 `None`
-
-    具备以上行为的函数在被本装饰器装饰后，将会变成一个文件结构探测函数，具备以下行为：
-
-    - 第一个纯位置参数为文件路径或文件对象，随后的任何参数都会被传递给被装饰的函数
-    - 返回一个 2 元组：
-
-        - 第一个元素是接受的文件路径或文件对象
-        - 第二个元素是探测结果，具体内容见上文
-    """
-
-    def prober(
-            operation: Callable[[IO[bytes], ...], _FileInfo | None]
-    ) -> Callable[[FilePath, ...], tuple[FilePath | IO[bytes], _FileInfo | None]]:
-        @wraps(operation)
-        def wrapper(filething: FilePath | IO[bytes], /, *args, **kwargs) -> tuple[FilePath | IO[bytes], _FileInfo | None]:
-            if isfilepath(filething):
-                with open(filething, mode='rb') as fileobj:
-                    return Path(filething), operation(fileobj, *args, **kwargs)
-            else:
-                fileobj = verify_fileobj(filething, 'binary',
-                                         verify_readable=True,
-                                         verify_seekable=True
-                                         )
-                fileobj_origpos = fileobj.tell()
-                prs = operation(fileobj, *args, **kwargs)
-                fileobj.seek(fileobj_origpos, 0)
-
-                return fileobj, prs
-
-        if isinstance(docstring_from, str):
-            wrapper.__doc__ = str(docstring_from)
-        elif docstring_from is not None:
-            docstring = getattr(docstring_from, '__doc__', None)
-            if docstring is not None:
-                wrapper.__doc__ = docstring
-
-        return wrapper
-
-    if callable(docstring_from):
-        return prober(docstring_from)
-    return prober

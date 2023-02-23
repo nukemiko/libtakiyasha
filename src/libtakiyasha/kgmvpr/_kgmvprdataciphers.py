@@ -4,9 +4,9 @@ from __future__ import annotations
 from hashlib import md5
 from typing import Generator, Literal
 
-from ..prototypes import KeyStreamBasedStreamCipherSkel
+from .._prototypes import KeyStreamBasedStreamCipherSkel
+from .._typeutils import CachedClassInstanceProperty, tobytes, toint
 from ..typedefs import BytesLike, IntegerLike
-from ..typeutils import CachedClassInstanceProperty, tobytes, toint
 
 __all__ = ['KGMCryptoLegacy']
 

@@ -4,22 +4,21 @@ from __future__ import annotations
 import warnings
 from math import log10
 from pathlib import Path
-from typing import Callable, IO, NamedTuple, overload
+from typing import Callable, IO, NamedTuple
 
-from .kwmdataciphers import Mask32, Mask32FromRecipe
+from ._kwmdataciphers import Mask32, Mask32FromRecipe
+from .._keyutils import make_salt
+from .._prototypes import EncryptedBytesIO
+from .._typeutils import isfilepath, tobytes, toint, verify_fileobj
 from ..exceptions import CrypterCreatingError, CrypterSavingError
-from ..keyutils import make_salt
-from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike, KeyStreamBasedStreamCipherProto, StreamCipherProto
-from ..typeutils import isfilepath, tobytes, toint, verify_fileobj
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
 DIGIT_CHARS = b'0123456789'
 ASCII_LETTER_CHARS = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
-__all__ = ['KWM', 'probe_kwm', 'KWMFileInfo']
+__all__ = ['KWM', 'probe_kwm', 'probeinfo_kwm', 'KWMFileInfo']
 
 
 class KWMFileInfo(NamedTuple):
@@ -45,65 +44,105 @@ class KWMFileInfo(NamedTuple):
     """
 
 
-@overload
-def probe_kwm(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KWMFileInfo | None]:
-    pass
-
-
-@proberfuncfactory
-def probe_kwm(filething, /):
+def probeinfo_kwm(filething: FilePath | IO[bytes], /, **kwargs) -> KWMFileInfo | None:
     """探测源文件 ``filething`` 是否为一个 KWM 文件。
 
-    返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
-    ``filething`` 是 KWM 文件，那么第二个元素为一个 ``KWMFileInfo`` 对象；否则为 ``None``。
+    本函数与 ``probe_kwm()`` 不同：如果 ``filething`` 是 KWM 文件，那么返回一个
+    ``KWMFileInfo`` 对象；否则返回 ``None``。
+
+    本方法的返回值不可用于 ``KWM.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_kwm()`` 的返回值。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Returns:
+        如果 ``filething`` 是 KWM 文件，那么返回一个
+        ``KWMFileInfo`` 对象；否则返回 ``None``。
+    """
+
+    def operation(__fd, /, **__kwargs) -> KWMFileInfo | None:
+        __fd.seek(0, 0)
+
+        header_data = __fd.read(1024)
+        cipher_data_offset = __fd.tell()
+        cipher_data_len = __fd.seek(0, 2) - cipher_data_offset
+
+        if not header_data.startswith(b'yeelion-kuwo'):
+            return
+
+        mask_recipe = header_data[24:32]
+
+        bitrate = None
+        bitrate_suffix_serialized = header_data[48:56].rstrip(b'\x00')
+        bitrate_serialized_len = 0
+        for byte in bitrate_suffix_serialized:
+            if byte in DIGIT_CHARS:
+                bitrate_serialized_len += 1
+        if bitrate_serialized_len > 0:
+            bitrate = int(bitrate_suffix_serialized[:bitrate_serialized_len]) * 1000
+
+        suffix = None
+        suffix_serialized = bitrate_suffix_serialized[bitrate_serialized_len:]
+        suffix_serialized_len = 0
+        for byte in suffix_serialized:
+            if byte in ASCII_LETTER_CHARS:
+                suffix_serialized_len += 1
+        if suffix_serialized_len > 0:
+            suffix = suffix_serialized[:suffix_serialized_len].decode('ascii')
+
+        return KWMFileInfo(
+            mask_recipe=mask_recipe,
+            cipher_data_offset=cipher_data_offset,
+            cipher_data_len=cipher_data_len,
+            bitrate=bitrate,
+            suffix=suffix,
+            opener=KWM.open,
+            opener_kwargs_required=('core_key',),
+            opener_kwargs_optional=('master_key',)
+        )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return operation(fileobj, **kwargs)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj, **kwargs)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return prs
+
+
+def probe_kwm(
+        filething: FilePath | IO[bytes], /,
+        **kwargs
+) -> tuple[Path | IO[bytes], KWMFileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 KWM 文件。
+
+    返回一个 2 元素长度的元组：
+
+    - 如果 ``filething`` 是文件对象，那么第一个元素为
+      ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；
+    - 如果 ``filething`` 是 KWM 文件，那么第二个元素为一个 ``KWMFileInfo`` 对象；
+    - 否则为 ``None``。
 
     本方法的返回值可以用于 ``KWM.open()`` 的第一个位置参数。
 
     Args:
-        filething: 源文件的路径或文件对象
+        filething: 指向源文件的路径或文件对象
     Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 KWM 文件，那么第二个元素为一个 KWMFileInfo 对象；否则为 None。
+        一个 2 元素长度的元组：如果 ``filething`` 是文件对象，那么第一个元素为
+        ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；如果
+        ``filething`` 是 KWM 文件，那么第二个元素为一个 ``KWMFileInfo`` 对象；否则为 ``None``。
     """
-    filething.seek(0, 0)
 
-    header_data = filething.read(1024)
-    cipher_data_offset = filething.tell()
-    cipher_data_len = filething.seek(0, 2) - cipher_data_offset
-
-    if not header_data.startswith(b'yeelion-kuwo'):
-        return
-
-    mask_recipe = header_data[24:32]
-
-    bitrate = None
-    bitrate_suffix_serialized = header_data[48:56].rstrip(b'\x00')
-    bitrate_serialized_len = 0
-    for byte in bitrate_suffix_serialized:
-        if byte in DIGIT_CHARS:
-            bitrate_serialized_len += 1
-    if bitrate_serialized_len > 0:
-        bitrate = int(bitrate_suffix_serialized[:bitrate_serialized_len]) * 1000
-
-    suffix = None
-    suffix_serialized = bitrate_suffix_serialized[bitrate_serialized_len:]
-    suffix_serialized_len = 0
-    for byte in suffix_serialized:
-        if byte in ASCII_LETTER_CHARS:
-            suffix_serialized_len += 1
-    if suffix_serialized_len > 0:
-        suffix = suffix_serialized[:suffix_serialized_len].decode('ascii')
-
-    return KWMFileInfo(
-        mask_recipe=mask_recipe,
-        cipher_data_offset=cipher_data_offset,
-        cipher_data_len=cipher_data_len,
-        bitrate=bitrate,
-        suffix=suffix,
-        opener=KWM.open,
-        opener_kwargs_required=('core_key',),
-        opener_kwargs_optional=('master_key',)
-    )
+    if isfilepath(filething):
+        return Path(filething), probeinfo_kwm(filething, **kwargs)
+    else:
+        return filething, probeinfo_kwm(filething, **kwargs)
 
 
 class KWM(EncryptedBytesIO):
@@ -124,10 +163,11 @@ class KWM(EncryptedBytesIO):
     def acceptable_ciphers(self):
         return [Mask32FromRecipe]
 
-    def __init__(self,
-                 cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
-                 initial_bytes: BytesLike = b''
-                 ) -> None:
+    def __init__(
+            self,
+            cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
+            initial_bytes: BytesLike = b''
+    ) -> None:
         """基于 BytesIO 的 KWM 透明加密二进制流。
 
         所有读写相关方法都会经过透明加密层处理：
@@ -236,10 +276,11 @@ class KWM(EncryptedBytesIO):
         self._suffix = None
 
     @classmethod
-    def from_file(cls,
-                  kwm_filething: FilePath | IO[bytes], /,
-                  core_key: BytesLike
-                  ):
+    def from_file(
+            cls,
+            kwm_filething: FilePath | IO[bytes], /,
+            core_key: BytesLike
+    ):
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``KWM.open()`` 代替。）
 
         打开一个 KWM 文件或文件对象 ``kwm_filething``。
@@ -261,11 +302,12 @@ class KWM(EncryptedBytesIO):
         return cls.open(kwm_filething, core_key=core_key)
 
     @classmethod
-    def open(cls,
-             filething_or_info: tuple[Path | IO[bytes], KWMFileInfo | None] | FilePath | IO[bytes], /,
-             core_key: BytesLike = None,
-             master_key: BytesLike = None
-             ):
+    def open(
+            cls,
+            filething_or_info: tuple[Path | IO[bytes], KWMFileInfo | None] | FilePath | IO[bytes], /,
+            core_key: BytesLike = None,
+            master_key: BytesLike = None
+    ):
         """打开一个 KWM 文件，并返回一个 ``KWM`` 对象。
 
         第一个位置参数 ``filething_or_info`` 需要是一个文件路径或文件对象。
@@ -360,10 +402,11 @@ class KWM(EncryptedBytesIO):
 
         return self.save(kwm_filething)
 
-    def save(self,
-             filething: FilePath | IO[bytes] = None,
-             newer_magic_header: bool = False
-             ) -> None:
+    def save(
+            self,
+            filething: FilePath | IO[bytes] = None,
+            newer_magic_header: bool = False
+    ) -> None:
         """（实验性功能）将当前对象保存为一个新 KWM 文件。
 
         第一个参数 ``filething`` 是可选的，如果提供此参数，需要是一个文件路径或文件对象。

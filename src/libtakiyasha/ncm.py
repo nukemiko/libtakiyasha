@@ -7,22 +7,22 @@ from base64 import b64decode, b64encode
 from dataclasses import asdict, dataclass, field as dcfield
 from pathlib import Path
 from secrets import token_bytes
-from typing import Callable, IO, Literal, NamedTuple, Type, overload
+from typing import Callable, IO, Literal, NamedTuple, Type
 
 from mutagen import flac, id3
 
+from ._keyutils import make_random_ascii_string, make_random_number_string
+from ._miscutils import BINARIES_ROOTDIR, bytestrxor
+from ._prototypes import EncryptedBytesIO
+from ._stdciphers import ARC4, StreamedAESWithModeECB
+from ._typeutils import isfilepath, tobytes, verify_fileobj
 from .exceptions import CrypterCreatingError
-from .keyutils import make_random_ascii_string, make_random_number_string
-from .miscutils import BINARIES_ROOTDIR, bytestrxor, proberfuncfactory
-from .prototypes import EncryptedBytesIO
-from .stdciphers import ARC4, StreamedAESWithModeECB
 from .typedefs import BytesLike, FilePath
-from .typeutils import isfilepath, tobytes, verify_fileobj
 from .warns import CrypterCreatingWarning
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
-__all__ = ['CloudMusicIdentifier', 'NCM', 'probe_ncm', 'NCMFileInfo']
+__all__ = ['CloudMusicIdentifier', 'NCM', 'probe_ncm', 'probeinfo_ncm', 'NCMFileInfo']
 
 MODULE_BINARIES_ROOTDIR = BINARIES_ROOTDIR / Path(__file__).stem
 
@@ -73,12 +73,13 @@ class CloudMusicIdentifier:
     transNames: list[str] = dcfield(default_factory=list)
     """此歌曲标题在网易云音乐平台的翻译。"""
 
-    def to_mutagen_tag(self,
-                       tag_type: Literal['FLAC', 'ID3'] = None,
-                       with_ncm_163key: bool = True,
-                       tag_key: BytesLike | None = None,
-                       return_cached_first: bytes = True
-                       ) -> flac.FLAC | id3.ID3:
+    def to_mutagen_tag(
+            self,
+            tag_type: Literal['FLAC', 'ID3'] = None,
+            with_ncm_163key: bool = True,
+            tag_key: BytesLike | None = None,
+            return_cached_first: bytes = True
+    ) -> flac.FLAC | id3.ID3:
         """将 CloudMusicIdentifier 对象导出为 Mutagen 库使用的标签格式实例：
         ``mutagen.flac.FLAC`` 和 ``mutagen.id3.ID3``。
 
@@ -203,10 +204,11 @@ class CloudMusicIdentifier:
         instance._orig_tag_key = tag_key
         return instance
 
-    def to_ncm_163key(self,
-                      tag_key: BytesLike = None,
-                      return_cached_first: bytes = True
-                      ) -> bytes:
+    def to_ncm_163key(
+            self,
+            tag_key: BytesLike = None,
+            return_cached_first: bytes = True
+    ) -> bytes:
         """将 CloudMusicIdentifier 对象导出为 163key。
 
         第一个参数 ``tag_key`` 用于解密 163key。如果留空，则使用默认值：
@@ -345,9 +347,9 @@ class NCMFileInfo(NamedTuple):
     """封面数据在文件中的长度。"""
     opener: Callable[[tuple[FilePath | IO[bytes], NCMFileInfo] | FilePath | IO[bytes], ...], NCM]
     """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
-    opener_kwargs_required: tuple[str, ...]
+    opener_kwargs_required: tuple[str, ...] = ()
     """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
-    opener_kwargs_optional: tuple[str, ...]
+    opener_kwargs_optional: tuple[str, ...] = ()
     """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
     
     此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
@@ -355,71 +357,105 @@ class NCMFileInfo(NamedTuple):
     """
 
 
-@overload
-def probe_ncm(filething: FilePath | IO[bytes], /) -> tuple[FilePath | IO[bytes], NCMFileInfo | None]:
-    pass
+def probeinfo_ncm(filething: FilePath | IO[bytes], /, **kwargs) -> NCMFileInfo | None:
+    """探测源文件 ``filething`` 是否为一个 NCM 文件。
+
+    本函数与 ``probe_ncm()`` 不同：如果 ``filething`` 是 NCM 文件，那么返回一个
+    ``NCMFileInfo`` 对象；否则返回 ``None``。
+
+    本方法的返回值不可用于 ``NCM.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_ncm()`` 的返回值。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Returns:
+        如果 ``filething`` 是 NCM 文件，那么返回一个
+        ``NCMFileInfo`` 对象；否则返回 ``None``。
+    """
+
+    def operation(__fd: IO[bytes], /, **__kwargs) -> NCMFileInfo | None:
+        __fd.seek(0, 0)
+
+        if not __fd.read(10).startswith(b'CTENFDAM'):
+            return
+
+        master_key_encrypted_xored_len = int.from_bytes(__fd.read(4), 'little')
+        master_key_encrypted_xored = __fd.read(master_key_encrypted_xored_len)
+        master_key_encrypted = bytestrxor(b'd' * master_key_encrypted_xored_len,
+                                          master_key_encrypted_xored
+                                          )
+
+        ncm_163key_xored_len = int.from_bytes(__fd.read(4), 'little')
+        ncm_163key_xored = __fd.read(ncm_163key_xored_len)
+        ncm_163key = bytestrxor(b'c' * ncm_163key_xored_len, ncm_163key_xored)
+
+        __fd.seek(5, 1)
+
+        cover_space_len = int.from_bytes(__fd.read(4), 'little')
+        cover_data_len = int.from_bytes(__fd.read(4), 'little')
+        if cover_space_len - cover_data_len < 0:
+            raise CrypterCreatingError(f'file structure error: '
+                                       f'cover space length ({cover_space_len}) '
+                                       f'< cover data length ({cover_data_len})'
+                                       )
+        cover_data_offset = __fd.tell()
+        cipher_data_offset = __fd.seek(cover_space_len, 1)
+        cipher_data_len = __fd.seek(0, 2) - cipher_data_offset
+
+        return NCMFileInfo(
+            master_key_encrypted=master_key_encrypted,
+            ncm_163key=ncm_163key,
+            cipher_ctor=ARC4,
+            cipher_data_offset=cipher_data_offset,
+            cipher_data_len=cipher_data_len,
+            cover_data_offset=cover_data_offset,
+            cover_data_len=cover_data_len,
+            opener=NCM.open,
+            opener_kwargs_required=('core_key',),
+            opener_kwargs_optional=('tag_key', 'master_key')
+        )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return operation(fileobj, **kwargs)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj, **kwargs)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return prs
 
 
-@proberfuncfactory
-def probe_ncm(filething, /):
-    """用法：probe_ncm(filething)
+def probe_ncm(
+        filething: FilePath | IO[bytes], /,
+        **kwargs
+) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 NCM 文件。
 
-    探测源文件 ``filething`` 是否为一个 NCM 文件。
+    返回一个 2 元素长度的元组：
 
-    返回一个 2 个元素长度的元组：
-
-    - 第一个元素为 ``filething``
+    - 如果 ``filething`` 是文件对象，那么第一个元素为
+      ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；
     - 如果 ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；
     - 否则为 ``None``。
 
     本方法的返回值可以用于 ``NCM.open()`` 的第一个位置参数。
 
     Args:
-        filething: 源文件的路径或文件对象
+        filething: 指向源文件的路径或文件对象
     Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 NCM 文件，那么第二个元素为一个 NCMFileInfo 对象；否则为 None。
+        一个 2 元素长度的元组：如果 ``filething`` 是文件对象，那么第一个元素为
+        ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；如果
+        ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；否则为 ``None``。
     """
-    filething.seek(0, 0)
-
-    if not filething.read(10).startswith(b'CTENFDAM'):
-        return
-
-    master_key_encrypted_xored_len = int.from_bytes(filething.read(4), 'little')
-    master_key_encrypted_xored = filething.read(master_key_encrypted_xored_len)
-    master_key_encrypted = bytestrxor(b'd' * master_key_encrypted_xored_len,
-                                      master_key_encrypted_xored
-                                      )
-
-    ncm_163key_xored_len = int.from_bytes(filething.read(4), 'little')
-    ncm_163key_xored = filething.read(ncm_163key_xored_len)
-    ncm_163key = bytestrxor(b'c' * ncm_163key_xored_len, ncm_163key_xored)
-
-    filething.seek(5, 1)
-
-    cover_space_len = int.from_bytes(filething.read(4), 'little')
-    cover_data_len = int.from_bytes(filething.read(4), 'little')
-    if cover_space_len - cover_data_len < 0:
-        raise CrypterCreatingError(f'file structure error: '
-                                   f'cover space length ({cover_space_len}) '
-                                   f'< cover data length ({cover_data_len})'
-                                   )
-    cover_data_offset = filething.tell()
-    cipher_data_offset = filething.seek(cover_space_len, 1)
-    cipher_data_len = filething.seek(0, 2) - cipher_data_offset
-
-    return NCMFileInfo(
-        master_key_encrypted=master_key_encrypted,
-        ncm_163key=ncm_163key,
-        cipher_ctor=ARC4,
-        cipher_data_offset=cipher_data_offset,
-        cipher_data_len=cipher_data_len,
-        cover_data_offset=cover_data_offset,
-        cover_data_len=cover_data_len,
-        opener=NCM.open,
-        opener_kwargs_required=('core_key',),
-        opener_kwargs_optional=('tag_key', 'master_key')
-    )
+    if isfilepath(filething):
+        return Path(filething), probeinfo_ncm(filething, **kwargs)
+    else:
+        return filething, probeinfo_ncm(filething, **kwargs)
 
 
 class NCM(EncryptedBytesIO):
@@ -484,10 +520,11 @@ class NCM(EncryptedBytesIO):
     """
 
     @classmethod
-    def from_file(cls,
-                  ncm_filething: FilePath | IO[bytes], /,
-                  core_key: BytesLike,
-                  ):
+    def from_file(
+            cls,
+            ncm_filething: FilePath | IO[bytes], /,
+            core_key: BytesLike,
+    ):
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.open()`` 代替。）
 
         打开一个已有的 NCM 文件 ``ncm_filething``。
@@ -510,12 +547,13 @@ class NCM(EncryptedBytesIO):
         return cls.open(ncm_filething, core_key=core_key)
 
     @classmethod
-    def open(cls,
-             filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
-             core_key: BytesLike = None,
-             tag_key: BytesLike = None,
-             master_key: BytesLike = None
-             ):
+    def open(
+            cls,
+            filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
+            core_key: BytesLike = None,
+            tag_key: BytesLike = None,
+            master_key: BytesLike = None
+    ):
         """打开一个 NCM 文件，并返回一个 ``NCM`` 对象。
 
         第一个位置参数 ``filething_or_info`` 需要是一个文件路径或文件对象。
@@ -628,10 +666,11 @@ class NCM(EncryptedBytesIO):
 
         return instance
 
-    def to_file(self,
-                ncm_filething: FilePath | IO[bytes] = None, /,
-                core_key: BytesLike = None
-                ) -> None:
+    def to_file(
+            self,
+            ncm_filething: FilePath | IO[bytes] = None, /,
+            core_key: BytesLike = None
+    ) -> None:
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.save()`` 代替。）
 
         将当前 NCM 对象保存到文件 ``filething``。
@@ -660,11 +699,12 @@ class NCM(EncryptedBytesIO):
             core_key = self.core_key
         return self.save(core_key, filething=ncm_filething)
 
-    def save(self,
-             core_key: BytesLike,
-             filething: FilePath | IO[bytes] = None,
-             tag_key: BytesLike | None = None
-             ) -> None:
+    def save(
+            self,
+            core_key: BytesLike,
+            filething: FilePath | IO[bytes] = None,
+            tag_key: BytesLike | None = None
+    ) -> None:
         """将当前对象保存为一个新 NCM 文件。
 
         第一个参数 ``core_key`` 是必需的，用于加密主密钥，以便嵌入到文件。

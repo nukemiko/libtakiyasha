@@ -6,16 +6,15 @@ import warnings
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, IO, Iterable, Literal, NamedTuple, overload
+from typing import Callable, IO, Iterable, Literal, NamedTuple
 
-from .qmcdataciphers import HardenedRC4, Mask128
-from .qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
+from ._qmcdataciphers import HardenedRC4, Mask128
+from ._qmckeyciphers import QMCv2KeyEncryptV1, QMCv2KeyEncryptV2
+from .._keyutils import make_random_ascii_string, make_salt
+from .._prototypes import EncryptedBytesIO
+from .._typeutils import isfilepath, tobytes, verify_fileobj
 from ..exceptions import CrypterCreatingError
-from ..keyutils import make_random_ascii_string, make_salt
-from ..miscutils import proberfuncfactory
-from ..prototypes import EncryptedBytesIO
 from ..typedefs import BytesLike, FilePath, IntegerLike
-from ..typeutils import isfilepath, tobytes, verify_fileobj
 from ..warns import CrypterSavingWarning
 
 warnings.filterwarnings(action='default', category=CrypterSavingWarning, module=__name__)
@@ -25,16 +24,18 @@ __all__ = [
     'probe_qmc',
     'probe_qmcv1',
     'probe_qmcv2',
+    'probeinfo_qmc',
+    'probeinfo_qmcv1',
+    'probeinfo_qmcv2',
     'QMCv1',
     'QMCv2',
     'QMCv2QTag',
     'QMCv2STag',
-    'QMCv1FileInfo',
-    'QMCv2FileInfo'
+    'QMCFileInfo'
 ]
 
 QMCV1_FILENAME_PATTERN = re.compile(r'^.*\.qmc([0-9]|flac|ogg|ra)$', flags=re.IGNORECASE)
-QMCv2_FILENAME_PATTERN = re.compile(r'^.*\.m(flac|gg)[0-9a-zA-Z]?$', flags=re.IGNORECASE)
+QMCv2_FILENAME_PATTERN = re.compile(r'^.*\.m(flac|gg|mp4)[0-9a-zA-Z]?$', flags=re.IGNORECASE)
 
 
 @dataclass
@@ -113,59 +114,49 @@ class QMCv2STag:
         )
 
 
-class QMCv1FileInfo(NamedTuple):
-    """用于存储 QMCv1 文件的信息。"""
+class QMCFileInfo(NamedTuple):
     cipher_data_offset: int
     """加密数据在文件中开始的位置。"""
     cipher_data_len: int
     """加密数据在文件中的长度。"""
-    opener: Callable[[tuple[FilePath | IO[bytes], QMCv1FileInfo] | FilePath | IO[bytes], ...], QMCv1]
+    version: int
+    """QMC 文件版本，目前为止仅支持 1 或 2。"""
+    opener: Callable[[tuple[FilePath | IO[bytes], QMCFileInfo] | FilePath | IO[bytes], ...], QMCv1 | QMCv2]
     """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
-    opener_kwargs_required: tuple[str, ...]
+    opener_kwargs_required: tuple[str, ...] = ()
     """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
-    opener_kwargs_optional: tuple[str, ...]
+    opener_kwargs_optional: tuple[str, ...] = ()
     """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
-    
+
     此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
     对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
     """
-
-
-class QMCv2FileInfo(NamedTuple):
-    """用于存储 QMCv2 文件的信息。"""
-    cipher_ctor: Callable[[...], HardenedRC4] | Callable[[...], Mask128] | None
+    skip_qmcv1_probe: bool = False
+    """（针对 QMCv1 文件）如果属性 ``version`` 为 ``1``，探测过程是否被跳过。"""
+    cipher_ctor: Callable[[...], HardenedRC4] | Callable[[...], Mask128] | None = None
     """Cipher 的构造函数，接受一个必需参数（密钥），返回一个用于解密数据的
     Cipher 对象。通常就是 Cipher 类自身。
-    
-    对于文件尾部嵌有 STag 数据，或者无任何尾部数据的 QMCv2 文件，由于其没有内嵌密钥，此属性为 ``None``。
+
+    对于 QMCv1 文件、文件尾部嵌有 STag 数据、或者无任何尾部数据的 QMCv2 文件，
+    由于其没有内嵌密钥，无法仅在探测阶段就决定此属性，因此设置为 ``None``。
     """
-    cipher_data_offset: int
-    """加密数据在文件中开始的位置。"""
-    cipher_data_len: int
-    """加密数据在文件中的长度。"""
-    master_key_encrypted: bytes
+    master_key_encrypted: bytes | None = None
     """受加密保护的主密钥。
-    
-    对于文件尾部嵌有 STag 数据，或者无任何尾部数据的 QMCv2 文件，由于其没有内嵌密钥，此属性为 ``None``。
+
+    对于 QMCv1 文件、文件尾部嵌有 STag 数据、或者无任何尾部数据的 QMCv2 文件，
+    由于其没有内嵌密钥，此属性为 ``None``。
     """
-    master_key_encryption_ver: int | None
+    master_key_encryption_ver: int | None = None
     """主密钥的加密保护版本，通常为 1 或 2，也仅支持这两个版本。
-    
-    对于文件尾部嵌有 STag 数据，或者无任何尾部数据的 QMCv2 文件，由于其没有内嵌密钥，此属性为 ``None``。
+
+    对于 QMCv1 文件、文件尾部嵌有 STag 数据、或者无任何尾部数据的 QMCv2 文件，
+    由于其没有内嵌密钥，此属性为 ``None``。
     """
-    extra_info: QMCv2QTag | QMCv2STag | None
+    extra_info: QMCv2QTag | QMCv2STag | None = None
     """文件尾部嵌有的除主密钥之外的额外数据，经过解析后的结果。
     如果有，为 ``QMCv2QTag`` 或 ``QMCv2STag`` 对象；如果没有，则为 ``None``。
-    """
-    opener: Callable[[tuple[FilePath | IO[bytes], QMCv2FileInfo] | FilePath | IO[bytes], ...], QMCv2]
-    """打开文件的方式，为一个可调对象，其会返回一个加密文件对象。"""
-    opener_kwargs_required: tuple[str, ...]
-    """通过 ``opener`` 打开文件时，所必需的关键字参数的名称。"""
-    opener_kwargs_optional: tuple[str, ...]
-    """通过 ``opener`` 打开文件时，可选的关键字参数的名称。
     
-    此属性仅储存可能会影响 ``opener`` 行为的可选关键字参数；
-    对 ``opener`` 行为没有影响的可选关键字参数不会出现在此属性中。
+    对于 QMCv1 文件，此属性始终为 ``None``。
     """
 
 
@@ -188,21 +179,65 @@ def _guess_cipher_ctor(master_key: BytesLike, /,
         return Mask128
 
 
-@overload
+def probeinfo_qmcv1(filething: FilePath | IO[bytes], /, **kwargs) -> QMCFileInfo | None:
+    """探测源文件 ``filething`` 是否为一个 QMCv1 文件。
+
+    本函数与 ``probe_qmcv1()`` 和 ``probe_qmc()`` 不同：如果
+    ``filething`` 是 QMCv1 文件，那么返回一个 ``QMCFileInfo`` 对象，其
+    ``version`` 属性为 ``1``；否则返回 ``None``。
+
+    本方法的返回值不可用于 ``QMCv1.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_qmcv1()`` 或 ``probe_qmc()`` 的返回值。
+
+    本方法不适用于 QMCv2 文件的探测。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Keyword Args:
+        skip_qmcv1_probe: 跳过探测过程，将 ``filething`` 当作 QMCv1 文件
+    Returns:
+        如果 ``filething`` 是 QMCv1 文件，那么返回一个
+        ``QMCFileInfo`` 对象，其 ``version`` 属性为 ``1``；否则返回 ``None``。
+    """
+    skip_qmcv1_probe: bool = kwargs.pop('skip_qmcv1_probe', False)
+
+    if isfilepath(filething):
+        filename = Path(filething).name
+        with open(filething, mode='rb') as fileobj:
+            endpos = fileobj.seek(0, 2)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        filename = getattr(filething, 'name', None)
+        endpos = fileobj.seek(0, 2)
+        fileobj.seek(fileobj_origpos, 0)
+
+    if isinstance(filename, str):
+        filename = str(filename)
+        if QMCV1_FILENAME_PATTERN.fullmatch(filename) or skip_qmcv1_probe:
+            return QMCFileInfo(
+                version=1,
+                cipher_data_offset=0,
+                cipher_data_len=endpos,
+                opener=QMCv1.open,
+                opener_kwargs_required=('mask',),
+                skip_qmcv1_probe=bool(skip_qmcv1_probe)
+            )
+
+
 def probe_qmcv1(filething: FilePath | IO[bytes], /,
-                is_qmcv1: bool = False
-                ) -> tuple[Path | IO[bytes], QMCv1FileInfo | None]:
-    pass
-
-
-@proberfuncfactory
-def probe_qmcv1(filething, /, is_qmcv1=False):
+                **kwargs
+                ) -> tuple[Path | IO[bytes], QMCFileInfo | None]:
     r"""探测源文件 ``filething`` 是否为一个 QMCv1 文件。
 
-    返回一个 2 个元素长度的元组：
+    返回一个 2 元素长度的元组：
 
     - 第一个元素为 ``filething``；
-    - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCv1FileInfo`` 对象；
+    - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``1``；
     - 否则为 ``None``。
 
     目前无法在没有密钥的情况下通过文件结构识别 QMCv1 文件，
@@ -211,7 +246,7 @@ def probe_qmcv1(filething, /, is_qmcv1=False):
 
     ``^.*\.qmc([0-9]|flac|ogg|ra)$``
 
-    对于不匹配以上正则表达式的文件名，如果参数 ``is_qmcv1=True``，
+    对于不匹配以上正则表达式的文件名，如果参数 ``skip_probe=True``，
     本方法会跳过探测过程，认为此文件是一个 QMCv1 文件，并直接返回结果。
 
     本方法的返回值可以用于 ``QMCv1.open()`` 的第一个位置参数。
@@ -219,40 +254,145 @@ def probe_qmcv1(filething, /, is_qmcv1=False):
     本方法不适用于 QMCv2 文件的探测。
 
     Args:
-        filething: 源文件的路径或文件对象
-        is_qmcv1: 跳过探测过程，认为源文件是一个 QMCv1 文件
+        filething: 指向源文件的路径或文件对象
+    Keyword Args:
+        skip_qmcv1_probe: 跳过探测过程，将 ``filething`` 当作 QMCv1 文件
     Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；否则为 None。
+        一个 2 元素长度的元组：第一个元素为 ``filething``；如果
+        ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCFileInfo`` 对象，其
+        ``version`` 属性为 ``1``；否则为 ``None``。
     """
-
-    filename = getattr(filething, 'name', None)
-    if filename is None and not is_qmcv1:
-        return
-    filepath = Path(filename)
-    if QMCV1_FILENAME_PATTERN.fullmatch(filepath.name) or is_qmcv1:
-        return QMCv1FileInfo(
-            cipher_data_offset=0,
-            cipher_data_len=filething.seek(0, 2),
-            opener=QMCv1.open,
-            opener_kwargs_required=('mask',),
-            opener_kwargs_optional=()
-        )
+    if isfilepath(filething):
+        return Path(filething), probeinfo_qmcv1(filething, **kwargs)
+    else:
+        return filething, probeinfo_qmcv1(filething, **kwargs)
 
 
-@overload
-def probe_qmcv2(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], QMCv2FileInfo | None]:
-    pass
-
-
-@proberfuncfactory
-def probe_qmcv2(filething, /):
+def probeinfo_qmcv2(filething: FilePath | IO[bytes], /, **kwargs) -> QMCFileInfo | None:
     """探测源文件 ``filething`` 是否为一个 QMCv2 文件。
 
-    返回一个 2 个元素长度的元组：
+    本函数与 ``probe_qmcv2()`` 和 ``probe_qmc()`` 不同：如果
+    ``filething`` 是 QMCv2 文件，那么返回一个 ``QMCFileInfo`` 对象，其
+    ``version`` 属性为 ``2``；否则返回 ``None``。
+
+    本方法的返回值不可用于 ``QMCv2.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_qmcv2()`` 或 ``probe_qmc()`` 的返回值。
+
+    本方法不适用于 QMCv1 文件的探测。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Returns:
+        如果 ``filething`` 是 QMCv2 文件，那么返回一个 ``QMCFileInfo`` 对象，其
+        ``version`` 属性为 ``2``；否则返回 ``None``。
+    """
+
+    def operation(__fd: IO[bytes], /, **__kwargs) -> QMCFileInfo | None:
+        opener_kwargs_required = []
+        opener_kwargs_optional = []
+
+        total_size = __fd.seek(-4, 2) + 4
+        tail_data = __fd.read(4)
+
+        if tail_data == b'STag':
+            __fd.seek(-8, 2)
+            tag_serialized_len = int.from_bytes(__fd.read(4), 'big')
+            if tag_serialized_len > (total_size - 8):
+                return
+            cipher_data_len = __fd.seek(-(tag_serialized_len + 8), 2)
+            extra_info = QMCv2STag.load(__fd.read(tag_serialized_len))
+
+            cipher_ctor = None
+            master_key_encrypted = None
+            master_key_encryption_ver = None
+
+            opener_kwargs_required.append('master_key')
+        elif tail_data == b'QTag':
+            opener_kwargs_required.append('core_key')
+            opener_kwargs_optional.append('master_key')
+
+            __fd.seek(-8, 2)
+            tag_serialized_len = int.from_bytes(__fd.read(4), 'big')
+            if tag_serialized_len > (total_size - 8):
+                return
+            cipher_data_len = __fd.seek(-(tag_serialized_len + 8), 2)
+            master_key_encrypted_b64encoded, extra_info = QMCv2QTag.load(__fd.read(tag_serialized_len))
+            try:
+                master_key_encrypted_b64encoded.decode('ascii')
+            except UnicodeDecodeError:
+                return
+            master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
+            if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
+                master_key_encrypted = master_key_encrypted_b64decoded[18:]
+                master_key_encryption_ver = 2
+
+                opener_kwargs_required.append('garble_keys')
+            else:
+                master_key_encrypted = master_key_encrypted_b64decoded
+                master_key_encryption_ver = 1
+            cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
+        else:
+            opener_kwargs_required.append('core_key')
+            opener_kwargs_optional.append('master_key')
+
+            extra_info = None
+            master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
+            if master_key_encrypted_b64encoded_len > total_size - 4:
+                return
+            cipher_data_len = __fd.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
+            master_key_encrypted_b64encoded = __fd.read(master_key_encrypted_b64encoded_len)
+            try:
+                master_key_encrypted_b64encoded.decode('ascii')
+            except UnicodeDecodeError:
+                return
+            master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
+            if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
+                master_key_encrypted = master_key_encrypted_b64decoded[18:]
+                master_key_encryption_ver = 2
+
+                opener_kwargs_required.append('garble_keys')
+            else:
+                master_key_encrypted = master_key_encrypted_b64decoded
+                master_key_encryption_ver = 1
+            cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
+
+        return QMCFileInfo(version=2,
+                           cipher_ctor=cipher_ctor,
+                           cipher_data_offset=0,
+                           cipher_data_len=cipher_data_len,
+                           master_key_encrypted=master_key_encrypted,
+                           master_key_encryption_ver=master_key_encryption_ver,
+                           extra_info=extra_info,
+                           opener=QMCv2.open,
+                           opener_kwargs_required=tuple(opener_kwargs_required),
+                           opener_kwargs_optional=tuple(opener_kwargs_optional)
+                           )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return operation(fileobj, **kwargs)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj, **kwargs)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return prs
+
+
+def probe_qmcv2(filething: FilePath | IO[bytes], /,
+                **kwargs
+                ) -> tuple[Path | IO[bytes], QMCFileInfo | None]:
+    """探测源文件 ``filething`` 是否为一个 QMCv2 文件。
+
+    返回一个 2 元素长度的元组：
 
     - 第一个元素为 ``filething``；
-    - 如果 ``filething`` 是 QMCv2 文件，那么第二个元素为一个 ``QMCv2FileInfo`` 对象；
+    - 如果 ``filething`` 是 QMCv2 文件，那么返回一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``2``；
     - 否则为 ``None``。
 
     本方法的返回值可以用于 ``QMCv2.open()`` 的第一个位置参数。
@@ -260,118 +400,91 @@ def probe_qmcv2(filething, /):
     本方法不适用于 QMCv1 文件的探测。
 
     Args:
-        filething: 源文件的路径或文件对象
+        filething: 指向源文件的路径或文件对象
     Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 QMCv2 文件，那么第二个元素为一个 QMCv2FileInfo 对象；否则为 None。
+        一个 2 元素长度的元组：第一个元素为 ``filething``；如果 ``filething``
+        是 QMCv2 文件，那么返回一个 ``QMCFileInfo`` 对象，其 ``version`` 属性为 ``2``；否则为 ``None``。
     """
-    opener_kwargs_required = []
-    opener_kwargs_optional = []
-
-    total_size = filething.seek(-4, 2) + 4
-    tail_data = filething.read(4)
-
-    if tail_data == b'STag':
-        filething.seek(-8, 2)
-        tag_serialized_len = int.from_bytes(filething.read(4), 'big')
-        if tag_serialized_len > (total_size - 8):
-            return
-        cipher_data_len = filething.seek(-(tag_serialized_len + 8), 2)
-        extra_info = QMCv2STag.load(filething.read(tag_serialized_len))
-
-        cipher_ctor = None
-        master_key_encrypted = None
-        master_key_encryption_ver = None
-
-        opener_kwargs_required.append('master_key')
-    elif tail_data == b'QTag':
-        opener_kwargs_required.append('core_key')
-        opener_kwargs_optional.append('master_key')
-
-        filething.seek(-8, 2)
-        tag_serialized_len = int.from_bytes(filething.read(4), 'big')
-        if tag_serialized_len > (total_size - 8):
-            return
-        cipher_data_len = filething.seek(-(tag_serialized_len + 8), 2)
-        master_key_encrypted_b64encoded, extra_info = QMCv2QTag.load(filething.read(tag_serialized_len))
-        try:
-            master_key_encrypted_b64encoded.decode('ascii')
-        except UnicodeDecodeError:
-            return
-        master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
-        if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
-            master_key_encrypted = master_key_encrypted_b64decoded[18:]
-            master_key_encryption_ver = 2
-
-            opener_kwargs_required.append('garble_keys')
-        else:
-            master_key_encrypted = master_key_encrypted_b64decoded
-            master_key_encryption_ver = 1
-        cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
+    if isfilepath(filething):
+        return Path(filething), probeinfo_qmcv2(filething, **kwargs)
     else:
-        opener_kwargs_required.append('core_key')
-        opener_kwargs_optional.append('master_key')
-
-        extra_info = None
-        master_key_encrypted_b64encoded_len = int.from_bytes(tail_data, 'little')
-        if master_key_encrypted_b64encoded_len > total_size - 4:
-            return
-        cipher_data_len = filething.seek(-(master_key_encrypted_b64encoded_len + 4), 2)
-        master_key_encrypted_b64encoded = filething.read(master_key_encrypted_b64encoded_len)
-        try:
-            master_key_encrypted_b64encoded.decode('ascii')
-        except UnicodeDecodeError:
-            return
-        master_key_encrypted_b64decoded = b64decode(master_key_encrypted_b64encoded)
-        if master_key_encrypted_b64decoded.startswith(b'QQMusic EncV2,Key:'):
-            master_key_encrypted = master_key_encrypted_b64decoded[18:]
-            master_key_encryption_ver = 2
-
-            opener_kwargs_required.append('garble_keys')
-        else:
-            master_key_encrypted = master_key_encrypted_b64decoded
-            master_key_encryption_ver = 1
-        cipher_ctor = _guess_cipher_ctor(master_key_encrypted)
-
-    return QMCv2FileInfo(cipher_ctor=cipher_ctor,
-                         cipher_data_offset=0,
-                         cipher_data_len=cipher_data_len,
-                         master_key_encrypted=master_key_encrypted,
-                         master_key_encryption_ver=master_key_encryption_ver,
-                         extra_info=extra_info,
-                         opener=QMCv2.open,
-                         opener_kwargs_required=tuple(opener_kwargs_required),
-                         opener_kwargs_optional=tuple(opener_kwargs_optional)
-                         )
+        return filething, probeinfo_qmcv2(filething, **kwargs)
 
 
-def probe_qmc(
-        filething: FilePath | IO[bytes], /,
-        is_qmcv1: bool = False
-) -> tuple[Path | IO[bytes], QMCv1FileInfo | None] | tuple[Path | IO[bytes], QMCv2FileInfo | None]:
-    """探测源文件 ``filething`` 是否为一个 QMCv1 或 QMCv2 文件。
+def probeinfo_qmc(filething: FilePath | IO[bytes], /, **kwargs) -> QMCFileInfo | None:
+    r"""探测源文件 ``filething`` 是否为一个 QMC 文件，并返回一个 ``QMCFileInfo`` 对象或 ``None``。
 
-    返回一个 2 个元素长度的元组：
+    目前仅支持 QMCv1 和 QMCv2 文件。也可使用底层函数
+    ``probeinfo_qmcv1()`` 或 ``probeinfo_qmcv2()``，但它们只提供对单一 QMC 版本的支持。
 
-    - 第一个元素为 ``filething``；
-    - 如果 ``filething`` 是 QMCv1 文件，那么第二个元素为一个 ``QMCv1FileInfo`` 对象；
-    - 如果 ``filething`` 是 QMCv2 文件，那么第二个元素为一个 ``QMCv2FileInfo`` 对象；
-    - 如果都不是，则为 ``None``。
+    本函数与 ``probe_qmc()`` 不同，它只返回一个 ``QMCFileInfo``
+    对象或 ``None``，由下列过程决定返回哪一个：
 
-    本方法的返回值可以用于 ``QMCv1.open()`` 和 ``QMCv2.open()`` 的第一个位置参数。
+    - 如果 ``filething`` 是 QMCv2 文件，那么返回一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``2``；
+    - 如果 ``filething`` 不是 QMCv2 文件，但文件名模式符合正则表达式
+      ``^.*\.qmc([0-9]|flac|ogg|ra)$``，那么返回一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``1``；
+    - 如果 ``filething`` 不满足以上条件，但关键字参数 ``skip_qmcv1_probe=True``，那么无论如何都会返回一个
+      ``QMCFileInfo`` 对象，其 ``version`` 属性为 ``1``，且 属性 ``skip_qmcv1_probe==True``；
+    - 如果都不是，则返回 ``None``。
+
+    本方法的返回值不可用于 ``QMCv1.open()`` 或 ``QMCv2.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_qmcv1()``、``probe_qmcv2()`` 或 ``probe_qmc()`` 的返回值。
 
     Args:
-        filething: 源文件的路径或文件对象
-        is_qmcv1: （针对 QMCv1 文件）跳过探测过程，认为源文件是一个 QMCv1 文件；QMCv2 文件不受此参数影响
-    Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 QMCv1 文件，那么第二个元素为一个 QMCv1FileInfo 对象；如果
-        filething 是 QMCv2 文件，那么第二个元素为一个 QMCv2FileInfo 对象；否则为 None。
+        filething: 指向源文件的路径或文件对象
+    Keyword Args:
+        skip_qmcv1_probe: 如果 ``filething`` 不是 QMCv2 文件，
+            则跳过 QMCv1 探测过程，将 ``filething`` 当作 QMCv1 文件
     """
-    fthing, fileinfo = probe_qmcv2(filething)
-    if fileinfo:
-        return fthing, fileinfo
-    return probe_qmcv1(filething, is_qmcv1=is_qmcv1)
+    return probeinfo_qmcv2(filething, **kwargs) or probeinfo_qmcv1(filething, **kwargs)
+
+
+def probe_qmc(filething: FilePath | IO[bytes], /,
+              **kwargs
+              ) -> tuple[Path | IO[bytes], QMCFileInfo | None]:
+    r"""探测源文件 ``filething`` 是否为一个 QMC 文件。
+
+    目前仅支持 QMCv1 和 QMCv2 文件。也可使用底层函数
+    ``probe_qmcv1()`` 或 ``probe_qmcv2()``，但它们只提供对单一 QMC 版本的支持。
+
+    返回一个 2 元素长度的元组，如果 ``filething`` 是一个文件对象，那么第一个元素就是
+    ``filething``。否则，第一个元素是 ``pathlib.Path(filething)``。
+
+    返回元组的第 2 个元素 ``fileinfo``，为 ``QMCFileInfo``
+    对象或 ``None``，在下列过程中决定返回哪一个：
+
+    - 如果 ``filething`` 是 QMCv2 文件，那么 ``fileinfo`` 是一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``2``；
+    - 如果 ``filething`` 不是 QMCv2 文件，但文件名模式符合正则表达式
+      ``^.*\.qmc([0-9]|flac|ogg|ra)$``，那么 ``fileinfo`` 是一个 ``QMCFileInfo`` 对象，其
+      ``version`` 属性为 ``1``；
+    - 如果 ``filething`` 不满足以上条件，但关键字参数
+      ``skip_qmcv1_probe=True``，那么无论如何，``fileinfo`` 都会是一个
+      ``QMCFileInfo`` 对象，其 ``version`` 属性为 ``1``，且属性 ``skip_qmcv1_probe==True``；
+    - 如果都不是，则 ``fileinfo`` 是 ``None``。
+
+    本方法的返回值可以用于 ``QMCv1.open()`` 或 ``QMCv2.open()`` 的第一个位置参数。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Keyword Args:
+        skip_qmcv1_probe: 如果 ``filething`` 不是 QMCv2 文件，
+            则跳过 QMCv1 探测过程，将 ``filething`` 当作 QMCv1 文件
+    """
+    if isfilepath(filething):
+        return Path(filething), probeinfo_qmc(filething, **kwargs)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = probeinfo_qmc(fileobj, **kwargs)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return fileobj, prs
 
 
 class QMCv1(EncryptedBytesIO):
@@ -457,7 +570,7 @@ class QMCv1(EncryptedBytesIO):
 
     @classmethod
     def open(cls,
-             filething_or_info: tuple[Path | IO[bytes], QMCv1FileInfo | None] | FilePath | IO[bytes], /,
+             filething_or_info: tuple[Path | IO[bytes], QMCFileInfo | None] | FilePath | IO[bytes], /,
              mask: BytesLike
              ):
         """打开一个 QMCv1 文件，并返回一个 ``QMCv1`` 对象。
@@ -492,7 +605,7 @@ class QMCv1(EncryptedBytesIO):
             return cls(cipher, fd.read(fileinfo.cipher_data_len))
 
         if isinstance(filething_or_info, tuple):
-            filething_or_info: tuple[Path | IO[bytes], QMCv1FileInfo | None]
+            filething_or_info: tuple[Path | IO[bytes], QMCFileInfo | None]
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
@@ -506,9 +619,14 @@ class QMCv1(EncryptedBytesIO):
             raise CrypterCreatingError(
                 f"{repr(filething)} is not a QMCv1 file"
             )
-        elif not isinstance(fileinfo, QMCv1FileInfo):
+        elif isinstance(fileinfo, QMCFileInfo):
+            if fileinfo.version != 1:
+                raise ValueError(
+                    f"unsupported QMC version {fileinfo.version} (expected 1)"
+                )
+        else:
             raise TypeError(
-                f"second element of the tuple must be QMCv1FileInfo or None, not {type(fileinfo).__name__}"
+                f"second element of the tuple must be QMCFileInfo or None, not {type(fileinfo).__name__}"
             )
 
         if isfilepath(filething):
@@ -954,7 +1072,7 @@ class QMCv2(EncryptedBytesIO):
 
     @classmethod
     def open(cls,
-             filething_or_info: tuple[Path | IO[bytes], QMCv2FileInfo | None] | FilePath | IO[bytes], /,
+             filething_or_info: tuple[Path | IO[bytes], QMCFileInfo | None] | FilePath | IO[bytes], /,
              core_key: BytesLike = None,
              garble_keys: Iterable[BytesLike] = None,
              master_key: BytesLike = None,
@@ -1076,7 +1194,7 @@ class QMCv2(EncryptedBytesIO):
             return inst
 
         if isinstance(filething_or_info, tuple):
-            filething_or_info: tuple[Path | IO[bytes], QMCv2FileInfo | None]
+            filething_or_info: tuple[Path | IO[bytes], QMCFileInfo | None]
             if len(filething_or_info) != 2:
                 raise TypeError(
                     "first argument 'filething_or_info' must be a file path, a file object, "
@@ -1090,9 +1208,14 @@ class QMCv2(EncryptedBytesIO):
             raise CrypterCreatingError(
                 f"{repr(filething)} is not a QMCv2 file"
             )
-        elif not isinstance(fileinfo, QMCv2FileInfo):
+        elif isinstance(fileinfo, QMCFileInfo):
+            if fileinfo.version != 2:
+                raise ValueError(
+                    f"unsupported QMC version {fileinfo.version} (expected 2)"
+                )
+        else:
             raise TypeError(
-                f"second element of the tuple must be QMCv2FileInfo or None, not {type(fileinfo).__name__}"
+                f"second element of the tuple must be QMCFileInfo or None, not {type(fileinfo).__name__}"
             )
 
         if isfilepath(filething):

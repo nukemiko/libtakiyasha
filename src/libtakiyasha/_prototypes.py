@@ -12,7 +12,7 @@ except ImportError:
     import _pyio as io
 
 from .typedefs import IntegerLike, BytesLike, KeyStreamBasedStreamCipherProto, StreamCipherProto, WritableBuffer
-from .typeutils import tobytes, toint
+from ._typeutils import tobytes, toint
 
 __all__ = [
     'CipherSkel',
