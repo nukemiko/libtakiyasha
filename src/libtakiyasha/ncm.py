@@ -438,7 +438,8 @@ def probe_ncm(
 
     返回一个 2 元素长度的元组：
 
-    - 第一个元素 ``filething`` 为指向源文件的路径或文件对象
+    - 如果 ``filething`` 是文件对象，那么第一个元素为
+      ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；
     - 如果 ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；
     - 否则为 ``None``。
 
@@ -447,7 +448,8 @@ def probe_ncm(
     Args:
         filething: 指向源文件的路径或文件对象
     Returns:
-        一个 2 元素长度的元组：第一个元素为 ``filething``；如果
+        一个 2 元素长度的元组：如果 ``filething`` 是文件对象，那么第一个元素为
+        ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；如果
         ``filething`` 是 NCM 文件，那么第二个元素为一个 ``NCMFileInfo`` 对象；否则为 ``None``。
     """
     if isfilepath(filething):
