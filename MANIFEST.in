@@ -1,2 +1,2 @@
-recursive-include src/libtakiyasha/binaries/*
+recursive-include src/libtakiyasha/_binaries/* *
 include MANIFEST.in src/libtakiyasha/VERSION
