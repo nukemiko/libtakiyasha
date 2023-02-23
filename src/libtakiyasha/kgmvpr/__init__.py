@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import Callable, IO, NamedTuple, overload
+from typing import Callable, IO, NamedTuple
 
 from ._kgmvprdataciphers import KGMCryptoLegacy
 from .._keyutils import make_salt
-from .._miscutils import proberfuncfactory
 from .._prototypes import EncryptedBytesIO
 from .._typeutils import isfilepath, tobytes, verify_fileobj
 from ..exceptions import CrypterCreatingError
@@ -15,7 +14,7 @@ from ..typedefs import BytesLike, FilePath, KeyStreamBasedStreamCipherProto, Str
 
 warnings.filterwarnings(action='default', category=DeprecationWarning, module=__name__)
 
-__all__ = ['KGMorVPR', 'probe_kgmvpr', 'KGMorVPRFileInfo']
+__all__ = ['KGMorVPR', 'probe_kgmvpr', 'probeinfo_kgmvpr', 'KGMorVPRFileInfo']
 
 
 class KGMorVPRFileInfo(NamedTuple):
@@ -45,63 +44,101 @@ class KGMorVPRFileInfo(NamedTuple):
     """
 
 
-@overload
-def probe_kgmvpr(filething: FilePath | IO[bytes], /) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
-    pass
-
-
-@proberfuncfactory
-def probe_kgmvpr(filething, /):
+def probeinfo_kgmvpr(filething: FilePath | IO[bytes], /, **kwargs) -> KGMorVPRFileInfo | None:
     """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
 
-    返回一个 2 个元素长度的元组：第一个元素为 ``filething``；如果
-    ``filething`` 是 KGM 或 VPR 文件，那么第二个元素为一个 ``KGMorVPRFileInfo`` 对象；否则为 ``None``。
+    本函数与 ``probe_kwm()`` 不同：如果 ``filething`` 是 KGM 或 VPR 文件，那么返回一个
+    ``KGMorVPRFileInfo`` 对象；否则返回 ``None``。
 
-    如果 ``filething`` 是 VPR 文件，那么 ``KGMorVPRFileInfo``
-    对象的 ``is_vpr`` 属性为 ``True``；否则为 ``False``。
+    本方法的返回值不可用于 ``KGMorVPR.open()`` 的第一个位置参数。如果要这样做，请使用
+    ``probe_kwm()`` 的返回值。
+
+    Args:
+        filething: 指向源文件的路径或文件对象
+    Returns:
+        如果 ``filething`` 是 KGM 或 VPR 文件，那么返回一个
+        ``KGMorVPRFileInfo`` 对象；否则返回 ``None``。
+    """
+
+    def operation(__fd, /, **__kwargs) -> KGMorVPRFileInfo | None:
+        opener_kwargs_required = ['table1', 'table2', 'tablev2']
+
+        total_size = __fd.seek(0, 2)
+        if total_size < 60:
+            return
+        __fd.seek(0, 0)
+
+        header = __fd.read(16)
+        if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
+            is_vpr = True
+            opener_kwargs_required.append('vpr_key')
+        elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
+            is_vpr = False
+        else:
+            return
+
+        cipher_data_offset = int.from_bytes(__fd.read(4), 'little')
+        encryption_version = int.from_bytes(__fd.read(4), 'little')
+        core_key_slot = int.from_bytes(__fd.read(4), 'little')
+        core_key_test_data = __fd.read(16)
+        master_key = __fd.read(16)
+
+        return KGMorVPRFileInfo(
+            cipher_data_offset=cipher_data_offset,
+            cipher_data_len=total_size - cipher_data_offset,
+            encryption_version=encryption_version,
+            core_key_slot=core_key_slot,
+            core_key_test_data=core_key_test_data,
+            master_key=master_key,
+            is_vpr=is_vpr,
+            opener=KGMorVPR.open,
+            opener_kwargs_required=tuple(opener_kwargs_required),
+            opener_kwargs_optional=()
+        )
+
+    if isfilepath(filething):
+        with open(filething, mode='rb') as fileobj:
+            return operation(fileobj, **kwargs)
+    else:
+        fileobj = verify_fileobj(filething, 'binary',
+                                 verify_readable=True,
+                                 verify_seekable=True
+                                 )
+        fileobj_origpos = fileobj.tell()
+        prs = operation(fileobj, **kwargs)
+        fileobj.seek(fileobj_origpos, 0)
+
+        return prs
+
+
+def probe_kgmvpr(
+        filething: FilePath | IO[bytes], /,
+        **kwargs
+) -> tuple[Path | IO[bytes], KGMorVPRFileInfo | None]:
+
+    """探测源文件 ``filething`` 是否为一个 KGM 或 VPR 文件。
+
+    返回一个 2 元素长度的元组：
+
+    - 如果 ``filething`` 是文件对象，那么第一个元素为
+      ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；
+    - 如果 ``filething`` 是 KGM 或 VPR 文件，那么第二个元素为一个 ``KGMorVPRFileInfo`` 对象；
+    - 否则为 ``None``。
 
     本方法的返回值可以用于 ``KGMorVPR.open()`` 的第一个位置参数。
 
     Args:
-        filething: 源文件的路径或文件对象
+        filething: 指向源文件的路径或文件对象
     Returns:
-        一个 2 个元素长度的元组：第一个元素为 filething；如果
-        filething 是 KGM 或 VPR 文件，那么第二个元素为一个 KGMorVPRFileInfo 对象；否则为 None。
+        一个 2 元素长度的元组：如果 ``filething`` 是文件对象，那么第一个元素为
+        ``filething``，否则，第一个元素为 ``pathlib.Path(filething)``；如果
+        ``filething`` 是 KGM 或 VPR 文件，那么第二个元素为一个 ``KGMorVPRFileInfo`` 对象；否则为 ``None``。
     """
-    opener_kwargs_required = ['table1', 'table2', 'tablev2']
 
-    total_size = filething.seek(0, 2)
-    if total_size < 60:
-        return
-    filething.seek(0, 0)
-
-    header = filething.read(16)
-    if header == b'\x05\x28\xbc\x96\xe9\xe4\x5a\x43\x91\xaa\xbd\xd0\x7a\xf5\x36\x31':
-        is_vpr = True
-        opener_kwargs_required.append('vpr_key')
-    elif header == b'\x7c\xd5\x32\xeb\x86\x02\x7f\x4b\xa8\xaf\xa6\x8e\x0f\xff\x99\x14':
-        is_vpr = False
+    if isfilepath(filething):
+        return Path(filething), probeinfo_kgmvpr(filething, **kwargs)
     else:
-        return
-
-    cipher_data_offset = int.from_bytes(filething.read(4), 'little')
-    encryption_version = int.from_bytes(filething.read(4), 'little')
-    core_key_slot = int.from_bytes(filething.read(4), 'little')
-    core_key_test_data = filething.read(16)
-    master_key = filething.read(16)
-
-    return KGMorVPRFileInfo(
-        cipher_data_offset=cipher_data_offset,
-        cipher_data_len=total_size - cipher_data_offset,
-        encryption_version=encryption_version,
-        core_key_slot=core_key_slot,
-        core_key_test_data=core_key_test_data,
-        master_key=master_key,
-        is_vpr=is_vpr,
-        opener=KGMorVPR.open,
-        opener_kwargs_required=tuple(opener_kwargs_required),
-        opener_kwargs_optional=()
-    )
+        return filething, probeinfo_kgmvpr(filething, **kwargs)
 
 
 class KGMorVPR(EncryptedBytesIO):
@@ -122,10 +159,11 @@ class KGMorVPR(EncryptedBytesIO):
     def acceptable_ciphers(self):
         return [KGMCryptoLegacy]
 
-    def __init__(self,
-                 cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
-                 initial_bytes: BytesLike = b''
-                 ) -> None:
+    def __init__(
+            self,
+            cipher: StreamCipherProto | KeyStreamBasedStreamCipherProto, /,
+            initial_bytes: BytesLike = b''
+    ) -> None:
         """基于 BytesIO 的 KGM/VPR 透明加密二进制流。
 
         所有读写相关方法都会经过透明加密层处理：
@@ -147,13 +185,14 @@ class KGMorVPR(EncryptedBytesIO):
         self._source_file_header_data: bytes | None = None
 
     @classmethod
-    def from_file(cls,
-                  kgm_vpr_filething: FilePath | IO[bytes], /,
-                  table1: BytesLike,
-                  table2: BytesLike,
-                  tablev2: BytesLike,
-                  vpr_key: BytesLike = None
-                  ):
+    def from_file(
+            cls,
+            kgm_vpr_filething: FilePath | IO[bytes], /,
+            table1: BytesLike,
+            table2: BytesLike,
+            tablev2: BytesLike,
+            vpr_key: BytesLike = None
+    ):
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``KGMorVPR.open()`` 代替。）
 
         打开一个 KGMorVPR 文件或文件对象 ``kgm_vpr_filething``。
@@ -186,13 +225,14 @@ class KGMorVPR(EncryptedBytesIO):
                         )
 
     @classmethod
-    def open(cls,
-             filething_or_info: tuple[Path | IO[bytes]] | FilePath | IO[bytes], /,
-             table1: BytesLike,
-             table2: BytesLike,
-             tablev2: BytesLike,
-             vpr_key: BytesLike = None
-             ):
+    def open(
+            cls,
+            filething_or_info: tuple[Path | IO[bytes]] | FilePath | IO[bytes], /,
+            table1: BytesLike,
+            table2: BytesLike,
+            tablev2: BytesLike,
+            vpr_key: BytesLike = None
+    ):
         """打开一个 KGMorVPR 文件，并返回一个 ``KGMorVPR`` 对象。
 
         第一个位置参数 ``filething_or_info`` 需要是一个文件路径或文件对象。
@@ -308,9 +348,10 @@ class KGMorVPR(EncryptedBytesIO):
 
         return self.save(kgm_vpr_filething)
 
-    def save(self,
-             filething: FilePath | IO[bytes] = None
-             ) -> None:
+    def save(
+            self,
+            filething: FilePath | IO[bytes] = None
+    ) -> None:
         """（实验性功能）将当前对象保存为一个新 KGM 或 VPR 文件。
 
         第一个参数 ``filething`` 是可选的，如果提供此参数，需要是一个文件路径或文件对象。
@@ -356,12 +397,13 @@ class KGMorVPR(EncryptedBytesIO):
             return operation(fileobj)
 
     @classmethod
-    def new(cls,
+    def new(
+            cls,
             table1: BytesLike,
             table2: BytesLike,
             tablev2: BytesLike,
             vpr_key: BytesLike = None
-            ):
+    ):
         """返回一个空 KGMorVPR 对象。
 
         第一、二、三个参数 ``table1``、``table2`` 和 ``tablev2``
