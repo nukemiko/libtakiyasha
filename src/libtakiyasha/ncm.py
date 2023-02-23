@@ -73,12 +73,13 @@ class CloudMusicIdentifier:
     transNames: list[str] = dcfield(default_factory=list)
     """此歌曲标题在网易云音乐平台的翻译。"""
 
-    def to_mutagen_tag(self,
-                       tag_type: Literal['FLAC', 'ID3'] = None,
-                       with_ncm_163key: bool = True,
-                       tag_key: BytesLike | None = None,
-                       return_cached_first: bytes = True
-                       ) -> flac.FLAC | id3.ID3:
+    def to_mutagen_tag(
+            self,
+            tag_type: Literal['FLAC', 'ID3'] = None,
+            with_ncm_163key: bool = True,
+            tag_key: BytesLike | None = None,
+            return_cached_first: bytes = True
+    ) -> flac.FLAC | id3.ID3:
         """将 CloudMusicIdentifier 对象导出为 Mutagen 库使用的标签格式实例：
         ``mutagen.flac.FLAC`` 和 ``mutagen.id3.ID3``。
 
@@ -203,10 +204,11 @@ class CloudMusicIdentifier:
         instance._orig_tag_key = tag_key
         return instance
 
-    def to_ncm_163key(self,
-                      tag_key: BytesLike = None,
-                      return_cached_first: bytes = True
-                      ) -> bytes:
+    def to_ncm_163key(
+            self,
+            tag_key: BytesLike = None,
+            return_cached_first: bytes = True
+    ) -> bytes:
         """将 CloudMusicIdentifier 对象导出为 163key。
 
         第一个参数 ``tag_key`` 用于解密 163key。如果留空，则使用默认值：
@@ -428,9 +430,10 @@ def probeinfo_ncm(filething: FilePath | IO[bytes], /, **kwargs) -> NCMFileInfo |
         return prs
 
 
-def probe_ncm(filething: FilePath | IO[bytes], /,
-              **kwargs
-              ) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
+def probe_ncm(
+        filething: FilePath | IO[bytes], /,
+        **kwargs
+) -> tuple[Path | IO[bytes], NCMFileInfo | None]:
     """探测源文件 ``filething`` 是否为一个 NCM 文件。
 
     返回一个 2 元素长度的元组：
@@ -515,10 +518,11 @@ class NCM(EncryptedBytesIO):
     """
 
     @classmethod
-    def from_file(cls,
-                  ncm_filething: FilePath | IO[bytes], /,
-                  core_key: BytesLike,
-                  ):
+    def from_file(
+            cls,
+            ncm_filething: FilePath | IO[bytes], /,
+            core_key: BytesLike,
+    ):
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.open()`` 代替。）
 
         打开一个已有的 NCM 文件 ``ncm_filething``。
@@ -541,12 +545,13 @@ class NCM(EncryptedBytesIO):
         return cls.open(ncm_filething, core_key=core_key)
 
     @classmethod
-    def open(cls,
-             filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
-             core_key: BytesLike = None,
-             tag_key: BytesLike = None,
-             master_key: BytesLike = None
-             ):
+    def open(
+            cls,
+            filething_or_info: tuple[Path | IO[bytes], NCMFileInfo | None] | FilePath | IO[bytes], /,
+            core_key: BytesLike = None,
+            tag_key: BytesLike = None,
+            master_key: BytesLike = None
+    ):
         """打开一个 NCM 文件，并返回一个 ``NCM`` 对象。
 
         第一个位置参数 ``filething_or_info`` 需要是一个文件路径或文件对象。
@@ -659,10 +664,11 @@ class NCM(EncryptedBytesIO):
 
         return instance
 
-    def to_file(self,
-                ncm_filething: FilePath | IO[bytes] = None, /,
-                core_key: BytesLike = None
-                ) -> None:
+    def to_file(
+            self,
+            ncm_filething: FilePath | IO[bytes] = None, /,
+            core_key: BytesLike = None
+    ) -> None:
         """（已弃用，且将会在后续版本中删除。请尽快使用 ``NCM.save()`` 代替。）
 
         将当前 NCM 对象保存到文件 ``filething``。
@@ -691,11 +697,12 @@ class NCM(EncryptedBytesIO):
             core_key = self.core_key
         return self.save(core_key, filething=ncm_filething)
 
-    def save(self,
-             core_key: BytesLike,
-             filething: FilePath | IO[bytes] = None,
-             tag_key: BytesLike | None = None
-             ) -> None:
+    def save(
+            self,
+            core_key: BytesLike,
+            filething: FilePath | IO[bytes] = None,
+            tag_key: BytesLike | None = None
+    ) -> None:
         """将当前对象保存为一个新 NCM 文件。
 
         第一个参数 ``core_key`` 是必需的，用于加密主密钥，以便嵌入到文件。
