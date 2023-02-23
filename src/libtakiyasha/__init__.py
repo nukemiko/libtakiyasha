@@ -5,12 +5,14 @@ from .exceptions import LibTakiyashaException
 from .kgmvpr import (
     KGMorVPR,
     KGMorVPRFileInfo,
-    probe_kgmvpr
+    probe_kgmvpr,
+    probeinfo_kgmvpr
 )
 from .kwm import (
     KWM,
     KWMFileInfo,
-    probe_kwm
+    probe_kwm,
+    probeinfo_kwm
 )
 from .ncm import (
     NCM,
