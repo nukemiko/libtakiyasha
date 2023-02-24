@@ -1,5 +1,12 @@
 ## 变更记录
 
+### 版本 2.1.1.post1
+
+-   修复了 `import libtakiyasha` 时因为缺少数据文件而抛出 `FileNotFoundError`，从而导致 `libtakiyasha` 彻底无法使用的问题
+-   将 `libtakiyasha.ncm.CloudmusicIdentifier` 加入顶层 `__init__.py` 的导入内容
+
+在[这里](https://github.com/nukemiko/libtakiyasha/compare/2.1.1...2.1.1.post1)查看更详细的变更记录。
+
 ### 版本 2.1.1
 
 -   修复了各个模块的文件探测函数 `probe_*()` 的类型提示，现在 `PyCharm`、`Pylance` 等 IDE 和 LSP 应该会正确识别和显示它们的参数类型和返回类型

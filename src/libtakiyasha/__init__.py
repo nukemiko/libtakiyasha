@@ -14,12 +14,7 @@ from .kwm import (
     probe_kwm,
     probeinfo_kwm
 )
-from .ncm import (
-    NCM,
-    NCMFileInfo,
-    probe_ncm,
-    probeinfo_ncm
-)
+from .ncm import (CloudMusicIdentifier, NCM, NCMFileInfo, probe_ncm, probeinfo_ncm)
 from .pkgmetadata import (
     version,
     version_info
